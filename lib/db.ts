@@ -8,7 +8,8 @@
  */
 
 import { neon, type NeonQueryFunction } from "@neondatabase/serverless";
-import { NETWORKS, type NetworkKey } from "./networks";
+import { NETWORK_KEYS, NETWORKS, type NetworkKey } from "./networks";
+import { schemaFor } from "./schema";
 
 let cached: NeonQueryFunction<false, false> | undefined;
 
@@ -19,6 +20,25 @@ export function db(): NeonQueryFunction<false, false> {
     cached = neon(url);
   }
   return cached;
+}
+
+let schemaReady: Promise<void> | undefined;
+
+/**
+ * Creates the log tables if they are missing, once per process. Means a fresh
+ * database works without anyone remembering `pnpm migrate`. A failure is not
+ * cached, so the next request retries.
+ */
+export function ensureSchema(): Promise<void> {
+  schemaReady ??= (async () => {
+    for (const net of NETWORK_KEYS) {
+      for (const statement of schemaFor(tableFor(net))) await db().query(statement);
+    }
+  })().catch((error) => {
+    schemaReady = undefined;
+    throw error;
+  });
+  return schemaReady;
 }
 
 export const tableFor = (net: NetworkKey): string => NETWORKS[net].table;
@@ -61,19 +81,27 @@ export function parseCursor(before: string): { ts: string; id: string | null } {
 
 /**
  * Appends one log entry. Deliberately never throws: a logging failure must not
- * turn a settled on-chain payment into an HTTP error for the merchant. The
- * `on conflict do nothing` pairs with the unique partial index on tx_hash so a
- * retried settle does not log the same transaction twice.
+ * turn a settled on-chain payment into an HTTP error for the merchant.
+ *
+ * Upserts on the unique partial index on tx_hash: a settle first logged as
+ * `settlement_pending` (ok=false) and later confirmed by a retry with the same
+ * hash updates that row instead of being dropped, so the success is recorded.
  */
 export async function logPayment(net: NetworkKey, row: PaymentInsert): Promise<void> {
   const table = tableFor(net);
   try {
+    await ensureSchema();
     await db().query(
       `insert into ${table}
          (kind, ok, error_reason, network, scheme, asset, asset_symbol, payer, pay_to,
           amount, resource, tx_hash, gas_used, gas_cost_wei, latency_ms)
        values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
-       on conflict do nothing`,
+       on conflict (tx_hash) where tx_hash is not null do update set
+         ok           = excluded.ok or ${table}.ok,
+         error_reason = case when excluded.ok or ${table}.ok then null else excluded.error_reason end,
+         gas_used     = coalesce(excluded.gas_used, ${table}.gas_used),
+         gas_cost_wei = coalesce(excluded.gas_cost_wei, ${table}.gas_cost_wei),
+         latency_ms   = coalesce(excluded.latency_ms, ${table}.latency_ms)`,
       [
         row.kind,
         row.ok,
@@ -114,6 +142,7 @@ export type LogQuery = {
 };
 
 export async function listPayments(query: LogQuery): Promise<PaymentRow[]> {
+  await ensureSchema();
   const table = tableFor(query.net);
   const clauses: string[] = [];
   const params: unknown[] = [];
@@ -170,6 +199,7 @@ export type NetworkStats = {
 };
 
 export async function statsFor(net: NetworkKey): Promise<NetworkStats> {
+  await ensureSchema();
   const table = tableFor(net);
   const rows = (await db().query(
     `select

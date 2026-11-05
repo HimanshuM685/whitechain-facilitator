@@ -119,7 +119,8 @@ function build(net: NetworkKey): x402Facilitator {
         // error carries the RPC URL and the decoded call arguments — including
         // the payer's signature.
         error_reason: safeErrorMessage(error),
-        payer: null,
+        // Public address from the authorization; nothing replayable.
+        payer: (paymentPayload.payload as { authorization?: { from?: string } }).authorization?.from ?? null,
         tx_hash: null,
         latency_ms: elapsed(paymentPayload),
         ...NO_COST,
@@ -156,6 +157,9 @@ export function supported(): SupportedResponse {
   const extensions = new Set<string>();
 
   for (const net of NETWORK_KEYS) {
+    // A network with no servable asset would let a merchant's resource server
+    // initialize against it, then fail every payment with unsupported_asset.
+    if (NETWORKS[net].assets.length === 0) continue;
     const result = facilitatorFor(net).getSupported();
     // Each instance also advertises the v1 EVM networks it inherited from
     // `registerExactEvmScheme`; we only serve Whitechain, so filter to ours.

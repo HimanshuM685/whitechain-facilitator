@@ -139,9 +139,12 @@ const paymentRequired: PaymentRequired = {
   accepts: [requirements],
 };
 
-// spendControls off: the client's default allowlist does not know Whitechain USDT.
+// Whitechain USDT is not in the client's default asset list; opt it in, as the agent docs do.
 const payload = await x402Client
-  .fromConfig({ schemes: [{ network: NETWORKS[net].caip2, client: new ExactEvmScheme(account) }], spendControls: false })
+  .fromConfig({
+    schemes: [{ network: NETWORKS[net].caip2, client: new ExactEvmScheme(account) }],
+    spendControls: { allowedAssets: [{ network: NETWORKS[net].caip2, asset: asset.address, maxAmountPerPayment: amount }] },
+  })
   .createPaymentPayload(paymentRequired);
 
 console.log("ok  signed TransferWithAuthorization (no transaction, no gas)");

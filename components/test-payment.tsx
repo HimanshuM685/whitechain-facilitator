@@ -137,13 +137,14 @@ export function TestPayment() {
         address: account,
         signTypedData: (message: Parameters<typeof wallet.signTypedData>[0]) => wallet.signTypedData(message),
       };
-      // spendControls off: the client's built-in allowlist only knows Circle
-      // tokens on major chains, so it rejects Whitechain USDT. The facilitator's
-      // own registry (lib/networks.ts) is the allowlist that matters here.
+      // Whitechain USDT is not in the client's default asset list, so opt it in
+      // explicitly — the same config the agent docs show.
       const payment = await x402Client
         .fromConfig({
           schemes: [{ network: net.caip2, client: new ExactEvmScheme(signer as never) }],
-          spendControls: false,
+          spendControls: {
+            allowedAssets: [{ network: net.caip2, asset: asset.address, maxAmountPerPayment: requirements.amount }],
+          },
         })
         .createPaymentPayload(paymentRequired);
 

@@ -10,9 +10,9 @@ GET /api/report
   PAYMENT-REQUIRED: <base64 JSON: what it costs, in what token, on what chain, to whom>
 
 GET /api/report
-  X-PAYMENT: <base64 JSON: a signed authorization for exactly that>
+  PAYMENT-SIGNATURE: <base64 JSON: a signed authorization for exactly that>
 → 200 OK
-  X-PAYMENT-RESPONSE: <base64 JSON: the transaction hash>
+  PAYMENT-RESPONSE: <base64 JSON: the transaction hash>
 ```
 
 Two requests. The second one carries payment. No redirect, no session, no webhook, no callback URL.

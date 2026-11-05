@@ -15,7 +15,7 @@ git clone <this repo> && cd whitechain-facilitator
 pnpm install
 cp .env.example .env     # then fill it in
 pnpm verify-assets       # proves the asset registry against the chains
-pnpm migrate             # creates payments_testnet and payments_mainnet
+pnpm migrate             # optional: the app creates its tables on first use
 pnpm dev
 ```
 

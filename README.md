@@ -20,7 +20,7 @@ The stablecoin moves **directly from payer to merchant**. This service never hol
 pnpm install
 cp .env.example .env          # fill in FACILITATOR_PRIVATE_KEY and DATABASE_URL
 pnpm verify-assets            # proves the asset registry against both chains
-pnpm migrate                  # creates payments_testnet and payments_mainnet
+pnpm migrate                  # optional: the app creates its tables on first use
 pnpm dev
 ```
 
@@ -52,11 +52,22 @@ The base URL is the bare origin — no `/api` prefix, no rewrites — because `H
 
 ## Using it as a merchant
 
+Standard x402 packages, unmodified — only the facilitator URL is ours:
+
 ```ts
-import { paymentMiddleware } from "@x402/express";
+import express from "express";
+import { paymentMiddleware, x402ResourceServer } from "@x402/express";
+import { HTTPFacilitatorClient } from "@x402/core/server";
+import { ExactEvmScheme } from "@x402/evm/exact/server";
+
+const app = express();
+
+const facilitatorClient = new HTTPFacilitatorClient({ url: "https://your-facilitator.example" });
+const resourceServer = new x402ResourceServer(facilitatorClient)
+  .register("eip155:1874", new ExactEvmScheme());
 
 app.use(paymentMiddleware({
-  "/api/report": {
+  "GET /api/report": {
     accepts: {
       scheme: "exact",
       network: "eip155:1874",
@@ -67,9 +78,12 @@ app.use(paymentMiddleware({
         extra: { name: "Tether USD", version: "1" },
       },
     },
+    description: "One generated report",
   },
-}, { url: "https://your-facilitator.example" }));
+}, resourceServer));
 ```
+
+Other chains keep their own facilitator: pass an array, `new x402ResourceServer([whitechainClient, otherClient])`, and each payment routes to the facilitator that advertises its network. Payers using `@x402/fetch` must opt Whitechain USDT in via `spendControls.allowedAssets`, since it is not in the client's default asset list. Full examples: `content/docs/quickstart-merchant.mdx` and `quickstart-agent.mdx`.
 
 **The price is written out longhand for a reason.** Neither Whitechain network is in `@x402/evm`'s `DEFAULT_ASSETS`, so the usual `price: "$0.01"` shorthand has no asset to resolve to and throws. You supply the three fields it would have filled in — and `extra` is the one that bites: it is the token's EIP-712 domain, and if it is wrong by a character every signature recovers to a different address and fails with no transaction and no revert to debug. Fetch verified values from `/assets` rather than guessing.
 
@@ -140,7 +154,7 @@ app/
   docs/                MDX renderer + sidebar
 
 content/docs/*.mdx     the documentation itself
-db/schema.sql          templated once per network by scripts/migrate.ts
+lib/schema.ts          log table DDL, applied automatically on first use
 scripts/               migrate, verify-assets, smoke, guards.test
 ```
 
@@ -172,7 +186,7 @@ Signatures and authorization nonces are never written to the database — only t
 
 ## Database
 
-Neon (or any) Postgres, via `DATABASE_URL`. One table per network, `payments_testnet` and `payments_mainnet`, generated from a single templated `db/schema.sql` so they cannot drift. A unique partial index on `tx_hash` makes the settle-retry path idempotent and stops a retry logging the same transaction twice.
+Neon (or any) Postgres, via `DATABASE_URL`. One table per network, `payments_testnet` and `payments_mainnet`, generated from one template in `lib/schema.ts` so they cannot drift, and created automatically on first use. A unique partial index on `tx_hash` makes the settle-retry path idempotent and stops a retry logging the same transaction twice.
 
 ## Testing
 

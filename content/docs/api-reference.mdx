@@ -10,8 +10,11 @@ Checks a payment authorization without broadcasting anything. Costs no gas; call
 
 **Request**
 
+This is exactly what `HTTPFacilitatorClient` from `@x402/core` sends; you never build it yourself when using the x402 middleware.
+
 ```json
 {
+  "x402Version": 2,
   "paymentPayload": {
     "x402Version": 2,
     "resource": { "url": "https://api.example.com/report" },
@@ -86,15 +89,14 @@ Scheme and network discovery.
 ```json
 {
   "kinds": [
-    { "x402Version": 2, "scheme": "exact", "network": "eip155:1874" },
-    { "x402Version": 2, "scheme": "exact", "network": "eip155:1875" }
+    { "x402Version": 2, "scheme": "exact", "network": "eip155:1874" }
   ],
   "extensions": [],
-  "signers": { "eip155:1874": ["0x…"], "eip155:1875": ["0x…"] }
+  "signers": { "eip155:*": ["0x…"], "eip155:1874": ["0x…"] }
 }
 ```
 
-`signers` is the address that pays your gas. It is the same on both networks — one address for you to watch.
+`signers` is the address that pays your gas. Only networks with at least one servable asset are listed, so mainnet is absent until it has one.
 
 ## GET /assets
 

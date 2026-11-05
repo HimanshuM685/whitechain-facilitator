@@ -1,25 +1,35 @@
-You have an endpoint. You want it to cost 0.01 USDT per call, settled on Whitechain, with the payer needing no gas token. This takes one middleware and one config object.
+You have an endpoint. You want it to cost 0.01 USDT per call, settled on Whitechain, with the payer needing no gas token.
+
+You use the **standard x402 packages, unmodified**. Nothing here is specific to us except one URL: you point the official `HTTPFacilitatorClient` at this facilitator. Every other chain you already accept keeps working the usual way.
 
 You are reading the <NetVal k="networkName" mono={false} /> version of this page — the snippets below already carry that network's addresses.
 
 ## 1. Install
 
 <NetCode lang="bash">
-{`npm install @x402/express   # or @x402/hono, @x402/next`}
+{`npm install @x402/core @x402/evm @x402/express`}
 </NetCode>
 
-## 2. Price the route
+Use `@x402/hono` or `@x402/next` instead of `@x402/express` for those frameworks. `@x402/core` and `@x402/evm` are always needed.
+
+## 2. Price the route (Express)
 
 <NetCode filename="server.ts">
 {`import express from "express";
-import { paymentMiddleware } from "@x402/express";
+import { paymentMiddleware, x402ResourceServer } from "@x402/express";
+import { HTTPFacilitatorClient } from "@x402/core/server";
+import { ExactEvmScheme } from "@x402/evm/exact/server";
 
 const app = express();
+
+const facilitatorClient = new HTTPFacilitatorClient({ url: "{{facilitatorUrl}}" });
+const resourceServer = new x402ResourceServer(facilitatorClient)
+  .register("{{caip2}}", new ExactEvmScheme());
 
 app.use(
   paymentMiddleware(
     {
-      "/api/report": {
+      "GET /api/report": {
         accepts: {
           scheme: "exact",
           network: "{{caip2}}",
@@ -34,7 +44,7 @@ app.use(
         description: "One generated report",
       },
     },
-    { url: "{{facilitatorUrl}}" },
+    resourceServer,
   ),
 );
 
@@ -45,7 +55,9 @@ app.get("/api/report", (_req, res) => {
 app.listen(3000);`}
 </NetCode>
 
-That is the whole integration. Unpaid requests get a 402 with your terms; paid requests reach your handler, and settlement happens after your handler returns a success.
+That is the whole integration. Unpaid requests get a `402` with your terms in the `PAYMENT-REQUIRED` header; paid requests carry a `PAYMENT-SIGNATURE` header, reach your handler, and are settled after it returns a success. The response carries the transaction in `PAYMENT-RESPONSE`.
+
+On startup the middleware calls our `/supported` to confirm the network is served. If the facilitator URL is wrong you find out then, not on the first paid request.
 
 ## Why the price is written out longhand
 
@@ -65,60 +77,33 @@ So you pass the three fields it would have filled in:
 
 That third row is the one that costs people an afternoon. The payer's wallet builds its signature under the domain you advertise; if the `name` or `version` is off by a character, the recovered signer is a different address and verification fails with `invalid_exact_evm_payload_signature`. There is no transaction, no revert, no log — just a payment that never works.
 
-So do not guess them. The values above are computed from each token's own `DOMAIN_SEPARATOR()` and re-checked on every deploy. You can also fetch them at runtime from [/assets](/assets):
+So do not guess them. The values above are computed from the token's own `DOMAIN_SEPARATOR()` and re-checked on every deploy. You can also fetch them at runtime from [/assets](/assets):
 
 <NetCode lang="bash">
 {`curl -s {{facilitatorUrl}}/assets | jq '.networks[] | select(.network=="{{network}}") | .assets'`}
 </NetCode>
 
-## Next.js
-
-<NetCode filename="app/api/report/route.ts">
-{`import { NextResponse } from "next/server";
-import { withX402 } from "@x402/next";
-import { x402ResourceServer } from "@x402/core/server";
-import { HTTPFacilitatorClient } from "@x402/core/http";
-import { ExactEvmScheme } from "@x402/evm/exact/server";
-
-const server = new x402ResourceServer(
-  new HTTPFacilitatorClient({ url: "{{facilitatorUrl}}" }),
-).register("{{caip2}}", new ExactEvmScheme());
-
-export const GET = withX402(
-  async () => NextResponse.json({ report: "the paid content" }),
-  {
-    "/api/report": {
-      accepts: {
-        scheme: "exact",
-        network: "{{caip2}}",
-        payTo: "0xYourMerchantAddress",
-        price: {
-          asset: "{{asset}}",
-          amount: "10000",
-          extra: { name: "{{assetDomainName}}", version: "{{assetDomainVersion}}" },
-        },
-      },
-      description: "One generated report",
-    },
-  },
-  server,
-);`}
-</NetCode>
-
-`withX402` settles only after your handler returns a status below 400 — so a request that fails inside your code does not charge the customer. Prefer it over the middleware form when you generate the paid content on demand and it can fail.
-
 ## Hono
+
+Same resource server, same route config; only the import changes.
 
 <NetCode filename="server.ts">
 {`import { Hono } from "hono";
-import { paymentMiddleware } from "@x402/hono";
+import { serve } from "@hono/node-server";
+import { paymentMiddleware, x402ResourceServer } from "@x402/hono";
+import { HTTPFacilitatorClient } from "@x402/core/server";
+import { ExactEvmScheme } from "@x402/evm/exact/server";
 
 const app = new Hono();
+
+const facilitatorClient = new HTTPFacilitatorClient({ url: "{{facilitatorUrl}}" });
+const resourceServer = new x402ResourceServer(facilitatorClient)
+  .register("{{caip2}}", new ExactEvmScheme());
 
 app.use(
   paymentMiddleware(
     {
-      "/api/report": {
+      "GET /api/report": {
         accepts: {
           scheme: "exact",
           network: "{{caip2}}",
@@ -129,12 +114,104 @@ app.use(
             extra: { name: "{{assetDomainName}}", version: "{{assetDomainVersion}}" },
           },
         },
+        description: "One generated report",
       },
     },
-    { url: "{{facilitatorUrl}}" },
+    resourceServer,
+  ),
+);
+
+app.get("/api/report", (c) => c.json({ report: "the paid content" }));
+
+serve({ fetch: app.fetch, port: 3000 });`}
+</NetCode>
+
+## Next.js
+
+API routes use `withX402`. It settles only after your handler returns a status below 400, so a request that fails inside your code does not charge the customer.
+
+<NetCode filename="app/api/report/route.ts">
+{`import { NextRequest, NextResponse } from "next/server";
+import { withX402, x402ResourceServer } from "@x402/next";
+import { HTTPFacilitatorClient } from "@x402/core/server";
+import { ExactEvmScheme } from "@x402/evm/exact/server";
+
+const facilitatorClient = new HTTPFacilitatorClient({ url: "{{facilitatorUrl}}" });
+const server = new x402ResourceServer(facilitatorClient)
+  .register("{{caip2}}", new ExactEvmScheme());
+
+const handler = async (_: NextRequest) => {
+  return NextResponse.json({ report: "the paid content" });
+};
+
+export const GET = withX402(
+  handler,
+  {
+    accepts: {
+      scheme: "exact",
+      network: "{{caip2}}",
+      payTo: "0xYourMerchantAddress",
+      price: {
+        asset: "{{asset}}",
+        amount: "10000",
+        extra: { name: "{{assetDomainName}}", version: "{{assetDomainVersion}}" },
+      },
+    },
+    description: "One generated report",
+  },
+  server,
+);`}
+</NetCode>
+
+To put pages behind payment, use `paymentProxy` from `@x402/next` in `proxy.ts` with the same `server` and a routes object keyed by path, exactly as in the [`@x402/next` README](https://www.npmjs.com/package/@x402/next).
+
+## Using other chains alongside Whitechain
+
+Keep your existing facilitator for the chains it serves and add ours for Whitechain. `x402ResourceServer` takes an array of facilitator clients and routes each payment to the first one that advertises its network — so a Base payment goes to the x402.org facilitator and a Whitechain payment comes here.
+
+<NetCode filename="server.ts">
+{`import { paymentMiddleware, x402ResourceServer } from "@x402/express";
+import { HTTPFacilitatorClient } from "@x402/core/server";
+import { ExactEvmScheme } from "@x402/evm/exact/server";
+
+const resourceServer = new x402ResourceServer([
+  new HTTPFacilitatorClient({ url: "{{facilitatorUrl}}" }),           // Whitechain
+  new HTTPFacilitatorClient({ url: "https://x402.org/facilitator" }), // Base Sepolia, etc.
+])
+  .register("{{caip2}}", new ExactEvmScheme())
+  .register("eip155:84532", new ExactEvmScheme());
+
+app.use(
+  paymentMiddleware(
+    {
+      "GET /api/report": {
+        accepts: [
+          {
+            scheme: "exact",
+            network: "{{caip2}}",
+            payTo: "0xYourMerchantAddress",
+            price: {
+              asset: "{{asset}}",
+              amount: "10000",
+              extra: { name: "{{assetDomainName}}", version: "{{assetDomainVersion}}" },
+            },
+          },
+          {
+            scheme: "exact",
+            network: "eip155:84532",
+            payTo: "0xYourMerchantAddress",
+            price: "$0.01", // Base is in DEFAULT_ASSETS, so the shorthand works there
+          },
+        ],
+        description: "One generated report",
+      },
+    },
+    resourceServer,
   ),
 );`}
 </NetCode>
+
+One 402 response then offers both; the payer picks the network it holds funds on. Nothing about your other chains changes.
 
 ## Verify it works
 
