@@ -36,5 +36,11 @@ create unique index if not exists {{table}}_tx_idx on {{table}} (tx_hash)
   where tx_hash is not null;
 
 -- Budget checks scan today's settles only; this keeps that a narrow index scan.
-create index if not exists {{table}}_settle_day_idx on {{table}} (created_at desc)
-  where kind = 'settle' and ok;
+-- Failed settles are included: a reverted or pending transaction still spent gas.
+drop index if exists {{table}}_settle_day_idx;
+create index if not exists {{table}}_settle_spend_idx on {{table}} (created_at desc)
+  where kind = 'settle';
+
+-- Keyset pagination for the public log orders by (created_at, id).
+drop index if exists {{table}}_created_idx;
+create index if not exists {{table}}_created_id_idx on {{table}} (created_at desc, id desc);

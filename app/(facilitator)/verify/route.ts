@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { facilitatorFor } from "@/lib/facilitator";
 import { parseFacilitatorRequest, preflightResponse, errorResponse } from "@/lib/facilitator-http";
 import { preflight } from "@/lib/guards";
+import { safeErrorMessage } from "@/lib/redact";
 
 export const dynamic = "force-dynamic";
 
@@ -33,7 +34,9 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    return NextResponse.json(await facilitatorFor(net).verify(payload, requirements));
+    const result = await facilitatorFor(net).verify(payload, requirements);
+    // The library copies raw viem errors into `invalidMessage` — RPC URL included.
+    return NextResponse.json(result.invalidMessage ? { ...result, invalidMessage: safeErrorMessage(result.invalidMessage) } : result);
   } catch (error) {
     return errorResponse("verify", error, (reason, message) =>
       NextResponse.json({ isValid: false, invalidReason: reason, invalidMessage: message }, { status: 500 }),

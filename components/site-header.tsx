@@ -4,6 +4,7 @@ import { NetworkSwitch } from "./network-switch";
 const LINKS = [
   { href: "/docs", label: "Docs" },
   { href: "/logs", label: "Transactions" },
+  { href: "/test", label: "Test" },
   { href: "/supported", label: "API" },
 ];
 

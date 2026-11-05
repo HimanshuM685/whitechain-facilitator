@@ -20,6 +20,7 @@ process.env.RATE_LIMIT_GLOBAL_PER_MIN = "1000";
 
 const { preflight, resetRateLimits, clientIp } = await import("../lib/guards");
 const { NETWORKS, findAsset } = await import("../lib/networks");
+const { safeErrorMessage } = await import("../lib/redact");
 
 const USDC_TESTNET = NETWORKS.testnet.assets.find((a) => a.symbol === "USDC.e")!;
 const USDC_MAINNET = NETWORKS.mainnet.assets.find((a) => a.symbol === "USDC.e")!;
@@ -188,6 +189,43 @@ await check("a platform-written IP header beats a caller-supplied one", () => {
     clientIp(new Headers({ "x-forwarded-for": "1.2.3.4", "x-real-ip": "70.0.0.5" })),
     "70.0.0.5",
   );
+});
+
+// Settlement failures land in the payment log, which /api/logs serves publicly.
+// A raw viem error carries the RPC URL and the decoded call arguments — for
+// transferWithAuthorization that includes the payer's signature.
+await check("error text is redacted before it can be stored or published", () => {
+  const viemish = new Error(
+    "HTTP request failed.\n\nURL: https://rpc.example.io/v1/SECRET_KEY\n" +
+      "Request body: {\"method\":\"eth_sendRawTransaction\",\"params\":[\"0x02f8b18207" +
+      "52808504a817c800850c4b2001f6830186a094cedfb561\"]}\n" +
+      "args: (0x2222222222222222222222222222222222222222, 10000, " +
+      "0x1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b" +
+      "1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b)",
+  );
+
+  const safe = safeErrorMessage(viemish);
+  assert.ok(!safe.includes("SECRET_KEY"), "RPC URL survived redaction");
+  assert.ok(!safe.includes("rpc.example.io"), "RPC host survived redaction");
+  assert.ok(!/0x[0-9a-fA-F]{40,}/.test(safe), "a long hex blob survived redaction");
+  assert.ok(safe.includes("<url>") && safe.includes("<hex>"), "redaction markers missing");
+  assert.ok(safe.length <= 300, "redacted message not length-capped");
+  assert.ok(!safe.includes("\n"), "newlines not collapsed");
+
+  // Short, non-sensitive text should survive intact and readable.
+  assert.equal(safeErrorMessage(new Error("insufficient funds")), "insufficient funds");
+  assert.equal(safeErrorMessage("plain string"), "plain string");
+});
+
+// Timestamps alone are not unique; the cursor carries the id to break ties.
+await check("log cursor splits timestamp and id, and accepts a bare timestamp", async () => {
+  const { parseCursor } = await import("../lib/db");
+  assert.deepEqual(parseCursor("2026-11-06 12:00:00.123456+00_42"), {
+    ts: "2026-11-06 12:00:00.123456+00",
+    id: "42",
+  });
+  assert.deepEqual(parseCursor("2026-11-06T12:00:00.123Z"), { ts: "2026-11-06T12:00:00.123Z", id: null });
+  assert.deepEqual(parseCursor("x_1; drop table"), { ts: "x_1; drop table", id: null });
 });
 
 console.log(`\n${passed} checks passed.`);

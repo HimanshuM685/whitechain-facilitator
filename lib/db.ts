@@ -41,9 +41,23 @@ export type PaymentRow = {
   gas_used: string | null;
   gas_cost_wei: string | null;
   latency_ms: number | null;
+  /** Opaque pagination cursor; pass back as `before`. */
+  cursor: string;
 };
 
-export type PaymentInsert = Omit<PaymentRow, "id" | "created_at">;
+export type PaymentInsert = Omit<PaymentRow, "id" | "created_at" | "cursor">;
+
+/**
+ * Keyset cursor for the log: `<created_at as Postgres text>_<id>`. The
+ * timestamp alone is not unique (rows can share a microsecond, and a JS Date
+ * would truncate it to milliseconds anyway), so `id` breaks ties. A bare
+ * timestamp is still accepted from older clients.
+ */
+export function parseCursor(before: string): { ts: string; id: string | null } {
+  const cut = before.lastIndexOf("_");
+  const id = cut === -1 ? "" : before.slice(cut + 1);
+  return /^\d+$/.test(id) ? { ts: before.slice(0, cut), id } : { ts: before, id: null };
+}
 
 /**
  * Appends one log entry. Deliberately never throws: a logging failure must not
@@ -83,14 +97,20 @@ export async function logPayment(net: NetworkKey, row: PaymentInsert): Promise<v
   }
 }
 
-/** Total WBT (wei) this network has sponsored since 00:00 UTC today. */
+/**
+ * Total WBT (wei) this network has sponsored since 00:00 UTC today.
+ *
+ * Counts every settle row, not just successful ones: a reverted transaction or
+ * one still `settlement_pending` spent real gas too. Rows that never broadcast
+ * carry a null cost and drop out of the sum on their own.
+ */
 export async function gasSpentTodayWei(net: NetworkKey, payTo?: string): Promise<bigint> {
   const table = tableFor(net);
   const where = payTo ? "and lower(pay_to) = lower($1)" : "";
   const rows = (await db().query(
     `select coalesce(sum(gas_cost_wei), 0)::text as total
        from ${table}
-      where kind = 'settle' and ok
+      where kind = 'settle'
         and created_at >= date_trunc('day', now() at time zone 'utc')
         ${where}`,
     payTo ? [payTo] : [],
@@ -120,8 +140,14 @@ export async function listPayments(query: LogQuery): Promise<PaymentRow[]> {
   const params: unknown[] = [];
 
   if (query.before) {
-    params.push(query.before);
-    clauses.push(`created_at < $${params.length}`);
+    const { ts, id } = parseCursor(query.before);
+    params.push(ts);
+    if (id === null) {
+      clauses.push(`created_at < $${params.length}::timestamptz`);
+    } else {
+      params.push(id);
+      clauses.push(`(created_at, id) < ($${params.length - 1}::timestamptz, $${params.length}::bigint)`);
+    }
   }
   if (query.address) {
     params.push(query.address);
@@ -144,10 +170,11 @@ export async function listPayments(query: LogQuery): Promise<PaymentRow[]> {
 
   return (await db().query(
     `select id::text, created_at, kind, ok, error_reason, network, scheme, asset, asset_symbol,
-            payer, pay_to, amount::text, resource, tx_hash, gas_used::text, gas_cost_wei::text, latency_ms
+            payer, pay_to, amount::text, resource, tx_hash, gas_used::text, gas_cost_wei::text, latency_ms,
+            created_at::text || '_' || id::text as cursor
        from ${table}
        ${where}
-      order by created_at desc
+      order by created_at desc, id desc
       limit $${params.length}`,
     params,
   )) as PaymentRow[];
@@ -170,7 +197,7 @@ export async function statsFor(net: NetworkKey): Promise<NetworkStats> {
        count(*) filter (where kind = 'settle' and ok)::int        as settled,
        count(*) filter (where kind = 'settle' and not ok)::int    as failed,
        coalesce(sum(amount) filter (where kind = 'settle' and ok), 0)::text       as volume,
-       coalesce(sum(gas_cost_wei) filter (where kind = 'settle' and ok), 0)::text as gas_sponsored_wei,
+       coalesce(sum(gas_cost_wei) filter (where kind = 'settle'), 0)::text        as gas_sponsored_wei,
        count(distinct payer) filter (where kind = 'settle' and ok)::int  as unique_payers,
        count(distinct pay_to) filter (where kind = 'settle' and ok)::int as unique_merchants,
        max(created_at) filter (where kind = 'settle' and ok)             as last_settled_at

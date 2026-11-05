@@ -4,6 +4,7 @@ import { facilitatorAccount, publicClientFor } from "@/lib/chain";
 import { dbHealthy, gasSpentTodayWei } from "@/lib/db";
 import { config } from "@/lib/guards";
 import { NETWORK_KEYS, NETWORKS, type NetworkKey } from "@/lib/networks";
+import { safeErrorMessage } from "@/lib/redact";
 
 export const dynamic = "force-dynamic";
 
@@ -22,9 +23,7 @@ type NetworkHealth = {
   estimatedSettlesLeft?: number;
 };
 
-/** Error text with any URL stripped — RPC endpoints can carry API keys. */
-const safeMessage = (error: unknown): string =>
-  ((error as Error)?.message ?? String(error)).replace(/https?:\/\/\S+/g, "<url>").slice(0, 160);
+const safeMessage = (error: unknown) => safeErrorMessage(error, 160);
 
 async function networkHealth(net: NetworkKey, signer: `0x${string}`): Promise<NetworkHealth> {
   const base = { network: net, caip2: NETWORKS[net].caip2 } as const;

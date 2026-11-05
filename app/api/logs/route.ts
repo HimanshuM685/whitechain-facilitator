@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
         txUrl: row.tx_hash ? explorerTxUrl(network, row.tx_hash) : null,
       })),
       // Only a full page can have more behind it; a short page is the last one.
-      nextBefore: rows.length === limit ? rows[rows.length - 1]!.created_at : null,
+      nextBefore: rows.length === limit ? rows[rows.length - 1]!.cursor : null,
     });
   } catch (error) {
     console.error("[api/logs]", (error as Error).message);

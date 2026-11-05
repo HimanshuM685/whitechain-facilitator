@@ -169,7 +169,7 @@ Powers the [transaction log](/logs). `network` selects the table; the two never 
 | --- | --- | --- |
 | `network` | `testnet` | `testnet` or `mainnet` |
 | `limit` | `50` | capped at 200 |
-| `before` | — | ISO timestamp cursor; use `nextBefore` from the previous page |
+| `before` | — | Opaque cursor; pass `nextBefore` from the previous page (a bare ISO timestamp is also accepted) |
 | `address` | — | matches either role — payer **or** merchant. What the log page's search box uses. |
 | `payer` | — | exact address match, case-insensitive |
 | `payTo` | — | exact address match, case-insensitive |

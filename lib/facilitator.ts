@@ -23,43 +23,109 @@ import type {
 import { registerExactEvmScheme } from "@x402/evm/exact/facilitator";
 import { facilitatorSignerFor, publicClientFor } from "./chain";
 import { logPayment } from "./db";
+import { config } from "./guards";
 import { findAsset, NETWORK_KEYS, NETWORKS, networkByCaip2, type NetworkKey } from "./networks";
+import { safeErrorMessage } from "./redact";
 
 /** Shared fields pulled out of a payload for the log, minus anything replayable. */
 function describe(payload: PaymentPayload, requirements: PaymentRequirements, net: NetworkKey) {
   return {
     network: requirements.network,
     scheme: requirements.scheme,
-    asset: requirements.asset ?? null,
-    asset_symbol: findAsset(net, requirements.asset ?? "")?.symbol ?? null,
-    pay_to: requirements.payTo ?? null,
-    amount: requirements.amount ?? null,
+    asset: requirements.asset,
+    asset_symbol: findAsset(net, requirements.asset)?.symbol ?? null,
+    pay_to: requirements.payTo,
+    amount: requirements.amount,
     resource: payload.resource?.url ?? null,
   };
 }
 
+/** Whitechain's minimum base fee. Used only as a floor when estimating. */
+const FLOOR_GAS_PRICE_WEI = 5_000_000_000n;
+
 /**
- * Settlement gas actually spent, read from the receipt. Needed for the daily
- * budget, so it is fetched even though SettleResponse does not carry it.
- * Returns nulls rather than throwing — a receipt we cannot read must not undo
- * a payment that already landed.
+ * Settlement gas actually spent, read from the receipt. SettleResponse does not
+ * carry it, but the daily budget is a sum over this column, so it has to be
+ * fetched.
+ *
+ * On failure it charges the budget a conservative over-estimate rather than
+ * recording null. Null would mean a settlement that spent real WBT counted as
+ * zero against the cap — so anyone able to make receipt reads fail would get
+ * unmetered gas. Overcounting only refuses settles slightly early, which is the
+ * safe direction for the guard on real spending.
  */
 async function receiptCost(net: NetworkKey, txHash: string) {
+  const client = publicClientFor(net);
   try {
-    const receipt = await publicClientFor(net).getTransactionReceipt({ hash: txHash as `0x${string}` });
+    const receipt = await client.getTransactionReceipt({ hash: txHash as `0x${string}` });
     const gasUsed = receipt.gasUsed;
-    const price = receipt.effectiveGasPrice ?? 0n;
+    const price = receipt.effectiveGasPrice ?? FLOOR_GAS_PRICE_WEI;
     return { gas_used: gasUsed.toString(), gas_cost_wei: (gasUsed * price).toString() };
   } catch {
-    return { gas_used: null, gas_cost_wei: null };
+    // The transaction may simply not be indexed yet; give it one short wait.
+    try {
+      const receipt = await client.waitForTransactionReceipt({
+        hash: txHash as `0x${string}`,
+        timeout: 8_000,
+      });
+      const price = receipt.effectiveGasPrice ?? FLOOR_GAS_PRICE_WEI;
+      return {
+        gas_used: receipt.gasUsed.toString(),
+        gas_cost_wei: (receipt.gasUsed * price).toString(),
+      };
+    } catch {
+      console.warn(`[settle] receipt unreadable for ${txHash} on ${net}; charging budget the worst case`);
+      return worstCaseCost();
+    }
   }
+}
+
+/** Upper bound for one settlement, charged whenever the real cost is unknowable. */
+const worstCaseCost = () => ({ gas_used: null, gas_cost_wei: (config.maxSettleGas * FLOOR_GAS_PRICE_WEI).toString() });
+
+/** EIP-3009 authorization nonce of a payload, if it has one. */
+const nonceOf = (payload: PaymentPayload): string | undefined =>
+  (payload.payload as { authorization?: { nonce?: string } }).authorization?.nonce?.toLowerCase();
+
+/**
+ * Cost to record for a settle that came back without a transaction hash.
+ *
+ * Normally that means nothing was broadcast. But if `writeContract` threw — an
+ * RPC timeout on `eth_sendRawTransaction` is the realistic case — the
+ * transaction may have propagated anyway, and its hash is lost. Those are
+ * charged the worst case so the budget never under-counts.
+ */
+function costWithoutHash(unconfirmed: Set<string>, payload: PaymentPayload) {
+  const nonce = nonceOf(payload);
+  return nonce !== undefined && unconfirmed.delete(nonce)
+    ? worstCaseCost()
+    : { gas_used: null, gas_cost_wei: null };
 }
 
 function build(net: NetworkKey): x402Facilitator {
   const facilitator = new x402Facilitator();
 
+  // Authorization nonces whose broadcast threw: the tx may be on-chain with no
+  // hash to show for it. Consumed by `costWithoutHash`.
+  // ponytail: per-instance memory; an entry whose settle never reaches a hook
+  // (it always does today) would linger until restart.
+  const unconfirmed = new Set<string>();
+  const signer = facilitatorSignerFor(net);
+
   registerExactEvmScheme(facilitator, {
-    signer: facilitatorSignerFor(net),
+    signer: {
+      ...signer,
+      writeContract: async (args) => {
+        try {
+          return await signer.writeContract(args);
+        } catch (error) {
+          // transferWithAuthorization(from, to, value, validAfter, validBefore, nonce, ...)
+          const nonce = args.args?.[5];
+          if (typeof nonce === "string") unconfirmed.add(nonce.toLowerCase());
+          throw error;
+        }
+      },
+    },
     networks: NETWORKS[net].caip2,
     // Re-simulate inside settle so a payment that would revert on-chain is
     // never broadcast. Costs one extra eth_call; saves a wasted WBT fee.
@@ -93,7 +159,9 @@ function build(net: NetworkKey): x402Facilitator {
       started.set(ctx.paymentPayload, Date.now());
     })
     .onAfterSettle(async ({ paymentPayload, requirements, result }) => {
-      const cost = result.transaction ? await receiptCost(net, result.transaction) : { gas_used: null, gas_cost_wei: null };
+      const cost = result.transaction
+        ? await receiptCost(net, result.transaction)
+        : costWithoutHash(unconfirmed, paymentPayload);
       await logPayment(net, {
         kind: "settle",
         ok: result.success,
@@ -109,12 +177,14 @@ function build(net: NetworkKey): x402Facilitator {
       await logPayment(net, {
         kind: "settle",
         ok: false,
-        error_reason: (error as Error).message.slice(0, 500),
+        // Redacted: this row is served publicly by /api/logs, and a raw viem
+        // error carries the RPC URL and the decoded call arguments — including
+        // the payer's signature.
+        error_reason: safeErrorMessage(error),
         payer: null,
         tx_hash: null,
-        gas_used: null,
-        gas_cost_wei: null,
         latency_ms: elapsed(paymentPayload),
+        ...costWithoutHash(unconfirmed, paymentPayload),
         ...describe(paymentPayload, requirements, net),
       });
     });
