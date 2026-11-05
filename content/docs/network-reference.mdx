@@ -1,0 +1,87 @@
+Everything below was read from the live chains, not copied from a wiki.
+
+## Currently selected: <NetVal k="networkName" mono={false} />
+
+<div className="not-prose">
+  <div className="rounded-xl border border-ink-line bg-ink-raised px-4 py-2">
+    <NetField label="Chain ID" k="chainId" />
+    <NetField label="CAIP-2" k="caip2" />
+    <NetField label="RPC (HTTP)" k="rpc" />
+    <NetField label="RPC (WebSocket)" k="wsRpc" />
+    <NetField label="Explorer" k="explorer" />
+    <NetField label="Bridge" k="bridge" />
+    <NetField label="Faucet" k="faucet" />
+    <NetField label="USDC.e" k="usdc" />
+    <NetField label="USDT" k="usdt" />
+  </div>
+</div>
+
+## Both networks side by side
+
+| | Whitechain mainnet | Whitechain Sepolia |
+| --- | --- | --- |
+| Chain ID | `1875` (`0x753`) | `1874` (`0x752`) |
+| CAIP-2 | `eip155:1875` | `eip155:1874` |
+| RPC | `https://rpc.whitechain.io` | `https://rpc.testnet.whitechain.io` |
+| WebSocket | `wss://rpc.whitechain.io/ws` | `wss://rpc.testnet.whitechain.io/ws` |
+| Explorer | `https://explorer.whitechain.io` | `https://explorer.testnet.whitechain.io` |
+| Bridge | `https://bridge.whitechain.io` | `https://bridge.testnet.whitechain.io` |
+| Faucet | — | `https://faucet.testnet.whitechain.io` |
+| Gas token | WBT, 18 decimals | WBT, 18 decimals |
+| Min base fee | 5 gwei | 5 gwei |
+| Block time | ~1s | ~1s |
+| Architecture | OP Stack L2 settling to Ethereum | same |
+
+Public RPCs are rate limited to roughly 50 requests/second per IP with some burst headroom. If you are running your own facilitator at volume, use a dedicated endpoint.
+
+## Deployed contracts
+
+| Contract | Address | Mainnet | Sepolia |
+| --- | --- | --- | --- |
+| Permit2 | `0x000000000022D473030F116dDEE9F6B43aC78BA3` | yes | yes |
+| `x402ExactPermit2Proxy` | `0x402085c248EeA27D92E8b30b2C58ed07f9E20001` | **no** | yes |
+| `x402UptoPermit2Proxy` | `0x4020A4f3…0002` | no | yes |
+| Multicall3 | `0xcA11bde05977b3631167028862bE2a173976CA11` | yes | yes |
+| CREATE2 deployer | `0x4e59b44847b379578588920cA78FbF26c0B4956C` | yes | yes |
+| WWBT (wrapped native) | `0x4200000000000000000000000000000000000006` | — | yes |
+| GasPriceOracle (OP predeploy) | `0x420000000000000000000000000000000000000F` | yes | yes |
+
+We do not use the Permit2 path — every allowlisted asset is natively EIP-3009 — but it is listed because it is deployed and you may want it. On mainnet the x402 proxies are absent; since the deterministic CREATE2 deployer is present, they can be deployed to the same addresses if someone needs them.
+
+## Adding the chain to viem
+
+<NetCode filename="chain.ts">
+{`import { defineChain } from "viem";
+
+export const whitechain = defineChain({
+  id: {{chainId}},
+  name: "{{networkName}}",
+  nativeCurrency: { name: "WhiteBIT Coin", symbol: "WBT", decimals: 18 },
+  rpcUrls: { default: { http: ["{{rpc}}"], webSocket: ["{{wsRpc}}"] } },
+  blockExplorers: { default: { name: "Whitechain Explorer", url: "{{explorer}}" } },
+  testnet: {{network}} === "testnet",
+});`}
+</NetCode>
+
+## Explorer APIs
+
+Both explorers are Blockscout, so the v2 JSON API is available and useful for building your own views:
+
+<NetCode lang="bash">
+{`# Token metadata
+curl -s '{{explorer}}/api/v2/tokens?q=USDC' | jq
+
+# Verified source and ABI for any contract
+curl -s '{{explorer}}/api/v2/smart-contracts/{{asset}}' | jq '.name, .abi'
+
+# Transactions for an address — e.g. our facilitator signer
+curl -s '{{explorer}}/api/v2/addresses/0xSigner/transactions' | jq`}
+</NetCode>
+
+That last one is how you can audit our gas spending independently of the figures we report.
+
+## Useful links
+
+- [Whitechain documentation](https://docs.whitechain.io)
+- [Network status](https://status.whitechain.io)
+- [x402 specification](https://github.com/x402-foundation/x402)

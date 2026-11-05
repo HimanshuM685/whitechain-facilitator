@@ -1,0 +1,38 @@
+This is an [x402](https://docs.x402.org) v2 facilitator for [Whitechain](https://docs.whitechain.io). It lets your HTTP endpoint charge per request, and it pays the gas so your customer does not have to.
+
+Concretely: a payer who holds nothing but a stablecoin can pay your API. No WBT, no faucet, no "approve first" step, no wallet popup — just a signature their wallet or agent produces offline.
+
+## The one-paragraph version
+
+Your endpoint answers an unpaid request with `402 Payment Required` and the terms. The payer signs an EIP-3009 `TransferWithAuthorization` — a message, not a transaction, so it costs nothing and needs no gas token. Your server hands that signature to this facilitator, which checks it and then submits `transferWithAuthorization` on-chain, paying the WBT fee from our own wallet. The stablecoin moves **directly from payer to you**. We never hold it.
+
+## What you get
+
+- **Both networks from one URL.** Whitechain mainnet (`eip155:1875`) and Sepolia (`eip155:1874`). x402 carries the network inside the payment payload, so there is no second endpoint to configure. Use the toggle in the header to switch which network these docs describe.
+- **Verified EIP-712 domains.** Whitechain is not in the x402 SDK's default asset table, so you must supply `asset`, `amount` and `extra` yourself — and a wrong `extra` fails every signature with nothing on-chain to debug. We publish values proven against each token's own `DOMAIN_SEPARATOR()`, and serve them from [/assets](/assets).
+- **A public log.** Every verification and settlement, with the explorer link and the WBT we spent on it: [transaction log](/logs).
+- **Standard clients.** `@x402/express`, `@x402/hono`, `@x402/next`, `@x402/fetch`, `@x402/axios` all work unmodified.
+
+## Try it in one command
+
+A live endpoint that costs 0.01 USDC.e. Unpaid, it answers 402 with the terms:
+
+<NetCode lang="bash">
+{`curl -i {{facilitatorUrl}}/api/demo/joke`}
+</NetCode>
+
+To actually pay it, see [pay for an endpoint](/docs/quickstart-agent).
+
+## Where to go next
+
+- Never seen x402 before → [what is x402](/docs/what-is-x402)
+- You have an API and want to charge for it → [charge for an endpoint](/docs/quickstart-merchant)
+- You have an agent that needs to pay → [pay for an endpoint](/docs/quickstart-agent)
+- You want to know exactly what we can do with your signature → [how it works](/docs/how-it-works)
+
+## Honest limitations
+
+- The `exact` scheme only, settled via EIP-3009. No Permit2 path, because every asset we allowlist supports EIP-3009 natively.
+- Allowlisted assets only. A relayer that sponsors any token it is handed is a free gas faucet for spam.
+- Rate limits and a daily gas budget per network. See [limits](/docs/limits).
+- Single instance: rate-limit counters live in process memory. The gas budget is in Postgres, so that one stays correct regardless.

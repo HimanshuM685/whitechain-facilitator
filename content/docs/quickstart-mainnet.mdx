@@ -1,0 +1,88 @@
+Whitechain mainnet is chain `1875`. Everything here moves real funds. Read the checklist at the bottom before you point production traffic at it.
+
+## What is supported
+
+**USDC.e — bridged USDC — is the only mainnet asset.** It is Circle's FiatToken with native EIP-3009, six decimals, and actual circulating supply on Whitechain.
+
+Mainnet USDT is **not** supported, and this is not an oversight: the contract at `0xF95604a4034d8407d3F1256De56C9ae37F299cb8` is an older `TetherToken` with `permit` but no `transferWithAuthorization`, so a gasless `exact` payment is impossible against it. Its total supply is also zero. [Supported assets](/docs/supported-assets) has the on-chain evidence.
+
+## Network details
+
+<div className="not-prose">
+  <div className="rounded-xl border border-ink-line bg-ink-raised px-4 py-2">
+    <NetField label="Chain ID" k="chainId" />
+    <NetField label="CAIP-2" k="caip2" />
+    <NetField label="RPC" k="rpc" />
+    <NetField label="Explorer" k="explorer" />
+    <NetField label="Bridge" k="bridge" />
+    <NetField label="USDC.e" k="usdc" />
+  </div>
+</div>
+
+<OnlyOn network="testnet">
+> You are currently viewing the **testnet** docs, so the table above shows Sepolia values.
+> Switch the toggle in the header to mainnet to see the real addresses.
+</OnlyOn>
+
+## 1. Get USDC.e onto Whitechain
+
+Use the [Whitechain bridge]({{bridge}}) to move USDC from Ethereum or Tron. It arrives as `USDC.e` — Bridged USDC (Whitechain). Verify what you received before wiring it into anything:
+
+<NetCode lang="bash">
+{`cast call {{usdc}} "symbol()(string)" --rpc-url {{rpc}}      # USDC.e
+cast call {{usdc}} "decimals()(uint8)" --rpc-url {{rpc}}      # 6
+cast call {{usdc}} "balanceOf(address)(uint256)" $PAYER --rpc-url {{rpc}}`}
+</NetCode>
+
+The payer still needs **zero WBT**. That does not change on mainnet.
+
+## 2. Confirm mainnet settlement is enabled
+
+Mainnet spends our real WBT, so it has a kill switch and a deliberately small daily budget. Check before you depend on it:
+
+<NetCode lang="bash">
+{`curl -s {{facilitatorUrl}}/health | jq '.networks[] | select(.network=="mainnet")'`}
+</NetCode>
+
+| `status` | Meaning |
+| --- | --- |
+| `ok` | Settling normally. |
+| `disabled` | Mainnet settlement is off. `/verify` still works, `/settle` returns 503. |
+| `degraded` | Our signer is low on WBT, or today's budget is spent. |
+
+`/verify` works even when settlement is disabled, so you can validate an integration end-to-end without us broadcasting anything.
+
+## 3. Point your config at mainnet
+
+One string changes:
+
+<NetCode lang="ts">
+{`accepts: {
+  scheme: "exact",
+  network: "{{caip2}}",
+  payTo: "0xYourMerchantAddress",
+  price: {
+    asset: "{{asset}}",
+    amount: "10000",                 // 0.01 USDC.e
+    extra: { name: "{{assetDomainName}}", version: "{{assetDomainVersion}}" },
+  },
+}`}
+</NetCode>
+
+## 4. Send one cent, then look at it
+
+Do not start with a real price. Settle 0.01 USDC.e, open the hash on the [explorer]({{explorer}}), and confirm the `Transfer` goes payer → your `payTo` with our signer paying the fee. Then raise the price.
+
+## Pre-launch checklist
+
+- [ ] `payTo` is an address you control and have tested receiving on. It is embedded in the signed message, so no one can redirect payments — but a typo is permanent.
+- [ ] You tested the whole flow on [Sepolia](/docs/quickstart-testnet) first.
+- [ ] You settled one 0.01 payment on mainnet and inspected it on the explorer.
+- [ ] Your prices are above the 0.01 dust floor. See [limits](/docs/limits).
+- [ ] You treat settlement failure as a retryable failure, not a completed sale. A valid verification is not a settled payment.
+- [ ] You know our mainnet daily gas budget is small, and what your fallback is when it is exhausted — a 503 from `/settle` means the payment did not happen.
+- [ ] You have read [how it works](/docs/how-it-works) and are comfortable with the trust model.
+
+## If you need guaranteed capacity
+
+This is a public, free, best-effort service with per-merchant gas budgets. For production volume, [run your own](/docs/self-host) — it is the same open-source service with your own signer and your own budget, and your merchant config only changes by one URL.

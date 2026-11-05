@@ -1,0 +1,84 @@
+The hosted instance is free and best-effort. If you need guaranteed capacity, your own gas budget, your own asset allowlist, or you simply do not want a third party seeing your payment metadata, run it yourself. It is one Next.js app and a Postgres database.
+
+Your merchants' configuration changes by exactly one string — the facilitator URL.
+
+## What you need
+
+- Node 22+
+- A Postgres database. [Neon](https://neon.tech) works well and the free tier is plenty.
+- A funded WBT wallet on whichever networks you enable. **This key signs transactions — treat it as a hot wallet.**
+
+## Setup
+
+```bash
+git clone <this repo> && cd whitechain-facilitator
+pnpm install
+cp .env.example .env     # then fill it in
+pnpm verify-assets       # proves the asset registry against the chains
+pnpm migrate             # creates payments_testnet and payments_mainnet
+pnpm dev
+```
+
+Run `verify-assets` before anything else. It checks every allowlisted token's EIP-3009 typehash, decimals, and — the one that silently breaks everything — the EIP-712 domain, against the token's own `DOMAIN_SEPARATOR()`. It exits non-zero on a mismatch and prints the correct values. If it fails, nothing downstream is trustworthy.
+
+## Environment
+
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `FACILITATOR_PRIVATE_KEY` | **required** | Pays gas. Never logged, never returned. |
+| `DATABASE_URL` | **required** | Postgres connection string. |
+| `MAINNET_ENABLED` | `false` | Must be `true` to settle on chain 1875. Leave off until funded and verified. |
+| `RPC_URL_TESTNET` | public RPC | Use a dedicated endpoint under load. |
+| `RPC_URL_MAINNET` | public RPC | Same. |
+| `NEXT_PUBLIC_FACILITATOR_URL` | `http://localhost:3000` | Your public origin. Shown in docs and used by the demo route. |
+| `NEXT_PUBLIC_DEFAULT_NETWORK` | `testnet` | Which network the site opens on. |
+| `DEMO_MERCHANT_ADDRESS` | burn address | Where the demo endpoint's payments go. |
+| `MIN_AMOUNT_BASE_UNITS` | `10000` | Dust floor, 0.01 at 6 decimals. |
+| `MAX_SETTLE_GAS` | `300000` | Per-settlement ceiling. |
+| `MIN_SIGNER_BALANCE_WBT` | `0.05` | Below this, `/settle` returns 503 instead of broadcasting. |
+| `GAS_BUDGET_DAILY_WBT_TESTNET` | `1` | Resets 00:00 UTC. |
+| `GAS_BUDGET_DAILY_WBT_MAINNET` | `0.5` | |
+| `GAS_BUDGET_PER_PAYTO_DAILY_WBT_TESTNET` | `0.1` | Per merchant. |
+| `GAS_BUDGET_PER_PAYTO_DAILY_WBT_MAINNET` | `0.05` | |
+| `RATE_LIMIT_IP_PER_MIN` | `120` | |
+| `RATE_LIMIT_PAYER_PER_MIN` | `30` | |
+| `RATE_LIMIT_PAYTO_PER_MIN` | `120` | |
+| `RATE_LIMIT_GLOBAL_PER_MIN` | `1200` | |
+
+## Changing the allowlist
+
+`lib/networks.ts` is the only place addresses live — the guards, the viem clients, the demo route, the docs components and the `/assets` endpoint all read from it. Add an asset there, then:
+
+```bash
+pnpm verify-assets
+```
+
+A candidate token must return the canonical EIP-3009 typehash and have a resolvable EIP-712 domain. The script searches candidate `name`/`version` pairs and tells you which one the contract actually signs with, so you never have to guess. See [supported assets](/docs/supported-assets).
+
+## Deploying
+
+Run it as a long-lived Node process — `pnpm build && pnpm start` — behind a reverse proxy. Railway, Fly or a plain VM are all fine.
+
+Two things to know about topology:
+
+- **Rate-limit counters are per process.** With more than one replica, each enforces its own share. The fix is a shared counter in Postgres or Redis; until you need it, run one instance.
+- **Gas budgets are database-backed**, so those stay correct no matter how many replicas you run. The money guard does not depend on process memory — that was deliberate.
+
+Set `TRUST_PROXY`-style header handling at your proxy: client IP is read from `x-forwarded-for`, so if that header is attacker-controlled your per-IP limits are decorative.
+
+## Operating it
+
+- Watch `/health`. It returns `503` when degraded, so it drops straight into an uptime check.
+- Watch the signer's WBT balance. `estimatedSettlesLeft` in `/health` tells you how many payments you can still cover.
+- The signer address is public in `/supported`. Anyone can audit your gas spending on the explorer — including you.
+
+## Security notes
+
+- The private key only ever pays gas. It cannot move customer funds: an `exact` payment is one transfer signed by the payer, with recipient and amount fixed in the signature. Worst case per request is one capped transaction.
+- Signatures and authorization nonces are never written to the database. Only the metadata the log page shows.
+- Error responses do not echo RPC URLs, which may carry API keys.
+- Keep the allowlist tight. An open-asset relayer is a gas faucet, and that is the actual attack here — not fund theft.
+
+## Running without the website
+
+The facilitator endpoints are plain route handlers at the app root — `/verify`, `/settle`, `/supported`, `/assets`, `/health`. If you only want the API, delete `app/page.tsx`, `app/docs`, `app/logs` and `components/`. Nothing in `lib/` depends on them.

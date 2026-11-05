@@ -1,0 +1,210 @@
+Five endpoints. `/verify`, `/settle` and `/supported` are the x402 v2 facilitator interface, so any `@x402/*` client works against them unmodified. `/assets` and `/health` are ours.
+
+Base URL: <NetVal k="facilitatorUrl" />
+
+Both networks are served from this one URL — x402 carries the network inside the payment payload, so there is no per-network endpoint.
+
+## POST /verify
+
+Checks a payment authorization without broadcasting anything. Costs no gas; call it freely.
+
+**Request**
+
+```json
+{
+  "paymentPayload": {
+    "x402Version": 2,
+    "resource": { "url": "https://api.example.com/report" },
+    "accepted": { "...": "the PaymentRequirements this payload satisfies" },
+    "payload": {
+      "signature": "0x…",
+      "authorization": {
+        "from": "0x…",
+        "to": "0x…",
+        "value": "10000",
+        "validAfter": "1762400000",
+        "validBefore": "1762400060",
+        "nonce": "0x…"
+      }
+    }
+  },
+  "paymentRequirements": {
+    "scheme": "exact",
+    "network": "{{caip2}}",
+    "asset": "{{asset}}",
+    "amount": "10000",
+    "payTo": "0x…",
+    "maxTimeoutSeconds": 60,
+    "extra": { "name": "{{assetDomainName}}", "version": "{{assetDomainVersion}}" }
+  }
+}
+```
+
+`paymentRequirements` may be omitted, in which case `paymentPayload.accepted` is used — it carries the same object.
+
+**Response**
+
+```json
+{ "isValid": true, "payer": "0x…" }
+```
+
+```json
+{ "isValid": false, "invalidReason": "insufficient_funds", "invalidMessage": "…" }
+```
+
+## POST /settle
+
+Submits the authorization on-chain and pays the WBT fee. Same request body as `/verify`.
+
+**Response**
+
+```json
+{
+  "success": true,
+  "transaction": "0x…",
+  "network": "{{caip2}}",
+  "payer": "0x…"
+}
+```
+
+```json
+{
+  "success": false,
+  "errorReason": "settlement_pending",
+  "errorMessage": "…",
+  "transaction": "0x…",
+  "network": "{{caip2}}"
+}
+```
+
+`settlement_pending` with a non-empty `transaction` means the transaction was broadcast but we could not confirm it in time. It may still succeed — check the hash before treating the payment as failed. Retrying the same payload reconciles against that transaction rather than broadcasting a second one.
+
+## GET /supported
+
+Scheme and network discovery.
+
+```json
+{
+  "kinds": [
+    { "x402Version": 2, "scheme": "exact", "network": "eip155:1874" },
+    { "x402Version": 2, "scheme": "exact", "network": "eip155:1875" }
+  ],
+  "extensions": [],
+  "signers": { "eip155:1874": ["0x…"], "eip155:1875": ["0x…"] }
+}
+```
+
+`signers` is the address that pays your gas. It is the same on both networks — one address for you to watch.
+
+## GET /assets
+
+Not part of the x402 spec. It exists because Whitechain is not in `@x402/evm`'s `DEFAULT_ASSETS`, so merchants must supply `asset`, `amount` and `extra` by hand — and a wrong `extra` breaks every signature with no on-chain trace. These values are computed from each token's own `DOMAIN_SEPARATOR()` and re-verified on every deploy.
+
+<NetCode lang="bash">
+{`curl -s {{facilitatorUrl}}/assets | jq`}
+</NetCode>
+
+```json
+{
+  "networks": [
+    {
+      "network": "testnet",
+      "caip2": "eip155:1874",
+      "chainId": 1874,
+      "assets": [
+        {
+          "symbol": "USDC.e",
+          "address": "0x5Eb541ba8A2DD841aF7864c3389162a23ddA8401",
+          "decimals": 6,
+          "extra": { "name": "Bridged USDC (Whitechain)", "version": "2" },
+          "domainSeparator": "0x02c4779645b800…"
+        }
+      ]
+    }
+  ]
+}
+```
+
+Drop `extra` straight into your route's `price`.
+
+## GET /health
+
+Per-network operational state. Returns `200` when healthy, `503` when degraded, so it works as an uptime check.
+
+<NetCode lang="bash">
+{`curl -s {{facilitatorUrl}}/health | jq`}
+</NetCode>
+
+```json
+{
+  "status": "ok",
+  "signer": "0x…",
+  "db": "ok",
+  "networks": [
+    {
+      "network": "testnet",
+      "caip2": "eip155:1874",
+      "status": "ok",
+      "blockNumber": "…",
+      "balanceWbt": "…",
+      "gasPriceGwei": "5.00",
+      "budget": { "dailyWbt": "1.0", "spentTodayWbt": "0.0123", "remainingWbt": "0.9877" },
+      "estimatedSettlesLeft": 2300
+    }
+  ]
+}
+```
+
+A network's `status` can also be `disabled` — mainnet settlement switched off — in which case `/verify` still works and `/settle` returns 503.
+
+## GET /api/logs
+
+Powers the [transaction log](/logs). `network` selects the table; the two never mix.
+
+<NetCode lang="bash">
+{`curl -s '{{facilitatorUrl}}/api/logs?network={{network}}&limit=20&settlesOnly=1' | jq '.rows[0]'`}
+</NetCode>
+
+| Parameter | Default | Notes |
+| --- | --- | --- |
+| `network` | `testnet` | `testnet` or `mainnet` |
+| `limit` | `50` | capped at 200 |
+| `before` | — | ISO timestamp cursor; use `nextBefore` from the previous page |
+| `address` | — | matches either role — payer **or** merchant. What the log page's search box uses. |
+| `payer` | — | exact address match, case-insensitive |
+| `payTo` | — | exact address match, case-insensitive |
+| `settlesOnly` | — | `1` to exclude verification-only attempts |
+
+## GET /api/stats
+
+Totals per network, as shown on the front page.
+
+## Error codes
+
+Protocol verdicts come back with `200` and `isValid: false` / `success: false` — the payment was judged, not the request:
+
+| Reason | Meaning |
+| --- | --- |
+| `unsupported_network` | Not a Whitechain CAIP-2 identifier we serve |
+| `unsupported_scheme` | Only `exact` is implemented |
+| `unsupported_asset` | Token not allowlisted on that network |
+| `amount_below_minimum` | Under 0.01 — gas would exceed the transfer |
+| `invalid_amount` | `amount` was not an integer string |
+| `insufficient_funds` | Payer's token balance too low |
+| `invalid_exact_evm_payload_signature` | Signature does not recover to `from`. Usually a wrong `extra` domain. |
+| `invalid_exact_evm_payload_authorization_valid_before` | Authorization expired |
+| `settlement_pending` | Broadcast but unconfirmed; `transaction` is populated |
+
+Operational refusals use HTTP status codes, because they are about us rather than the payment, and are worth retrying:
+
+| Status | `error` | Meaning |
+| --- | --- | --- |
+| `400` | `bad_request` | Malformed body |
+| `400` | `unsupported_network` | Network not served; checked before dispatch |
+| `429` | `rate_limited` | Over a per-IP, per-payer or per-merchant limit. `Retry-After` is set. |
+| `503` | `mainnet_disabled` | Mainnet settlement off; `/verify` unaffected |
+| `503` | `signer_balance_low` | Our WBT is below the operating floor |
+| `503` | `daily_gas_budget_exhausted` | Network budget spent; resets 00:00 UTC |
+| `503` | `merchant_gas_budget_exhausted` | This `payTo` used its daily allowance |
+
+Nothing is ever broadcast on a `429` or `503`, so these cost you nothing but a retry.

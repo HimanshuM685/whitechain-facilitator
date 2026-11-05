@@ -1,0 +1,72 @@
+We settle via EIP-3009 `transferWithAuthorization`. A token without it cannot be paid gaslessly at all — so support is not a policy choice, it is a property of the contract.
+
+On top of that, assets are **allowlisted** rather than auto-detected. A relayer that sponsors gas for any token it is handed is a free gas faucet for whoever notices first.
+
+## The list
+
+| Token | Network | Address | EIP-3009 | Decimals |
+| --- | --- | --- | --- | --- |
+| **USDC.e** | Sepolia | `0x5Eb541ba8A2DD841aF7864c3389162a23ddA8401` | yes | 6 |
+| **USDT** | Sepolia | `0xcedfB56113143d55b2358b8CFbB0dEB5Ad2f55a7` | yes | 6 |
+| **USDC.e** | mainnet | `0xF97B9Bf62916f1EB42Dd906a7254603e7b9FC4a7` | yes | 6 |
+
+Fetch the same list, with verified EIP-712 domains, from [/assets](/assets).
+
+## The `extra` values — use these exactly
+
+This is the field that silently breaks integrations. The payer's wallet signs under the EIP-712 domain the merchant advertises; if `name` or `version` is wrong by a character, the signature recovers to a different address and verification fails with no transaction and no revert to look at.
+
+| Token | `extra` |
+| --- | --- |
+| USDC.e (both networks) | `{ "name": "Bridged USDC (Whitechain)", "version": "2" }` |
+| USDT (Sepolia) | `{ "name": "Tether USD", "version": "1" }` |
+
+These are not guesses from `name()`. Each one is the pair that reproduces the token's own `DOMAIN_SEPARATOR()`, checked on every deploy by `pnpm verify-assets`:
+
+```
+Whitechain Sepolia  USDC.e  0x5Eb541ba8A2DD841aF7864c3389162a23ddA8401
+  decimals        ok
+  eip-3009        ok (canonical typehash)
+  separator       0x02c4779645b8009345e4ea4f18fd564ecab398b3581e107aca67a4be3f87f009
+  domain          ok  { name: "Bridged USDC (Whitechain)", version: "2" }
+```
+
+Note that USDC.e and USDT use **different** domain versions — `"2"` and `"1"`. There is no safe default here; you have to use the right one per token.
+
+## Why mainnet USDT is not supported
+
+Mainnet USDT at `0xF95604a4034d8407d3F1256De56C9ae37F299cb8` is a `TetherToken` (V1). Its ABI has `permit` and `nonces`, but no `transferWithAuthorization`, no `receiveWithAuthorization`, and no `authorizationState`. Check it yourself:
+
+```bash
+# Sepolia USDT — returns the canonical typehash
+cast call 0xcedfB56113143d55b2358b8CFbB0dEB5Ad2f55a7 \
+  "TRANSFER_WITH_AUTHORIZATION_TYPEHASH()(bytes32)" \
+  --rpc-url https://rpc.testnet.whitechain.io
+# 0x7c7c6cdb67a18743f49ec6fa9b35f50d52ed05cbed4cc592e13b44501c1a2267
+
+# Mainnet USDT — reverts
+cast call 0xF95604a4034d8407d3F1256De56C9ae37F299cb8 \
+  "TRANSFER_WITH_AUTHORIZATION_TYPEHASH()(bytes32)" \
+  --rpc-url https://rpc.whitechain.io
+# execution reverted
+```
+
+Its total supply is also `0`, so nobody holds it in any case.
+
+This catches people out because the two networks are not symmetric: **Sepolia USDT is `TetherTokenV2`, which does support EIP-3009.** If you read somewhere that "Whitechain USDT has no EIP-3009 so x402 payments must go through Permit2", that is true of the mainnet contract and false of the testnet one.
+
+Mainnet USDT could in principle be paid through Permit2 — but that needs an approval to the Permit2 contract first, which costs the payer gas, which defeats the purpose unless that approval is itself sponsored. We would rather support one asset properly than two badly.
+
+## Adding an asset
+
+A candidate needs to:
+
+1. Return the canonical typehash from `TRANSFER_WITH_AUTHORIZATION_TYPEHASH()`.
+2. Have a resolvable EIP-712 domain — some `name`/`version` pair must reproduce its `DOMAIN_SEPARATOR()`.
+3. Actually be held by someone, so sponsoring it is worth the gas.
+
+If you are running [your own instance](/docs/self-host), add it to `lib/networks.ts` and run `pnpm verify-assets` — it fails loudly rather than letting a wrong domain reach production.
+
+## Decimals
+
+Every allowlisted asset uses 6 decimals, so `amount: "10000"` is `0.01` throughout. Do not assume 18 and do not assume it stays 6 forever — read `decimals()` or [/assets](/assets) if you are generating prices programmatically.

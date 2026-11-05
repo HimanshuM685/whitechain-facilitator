@@ -1,0 +1,70 @@
+Whitechain has a mainnet and a Sepolia testnet. Both are EVM-compatible OP Stack L2s that settle to Ethereum, both use WBT for gas, and both produce a block every second. This facilitator serves both from one URL.
+
+## Which one do I want
+
+**Sepolia (chain 1874)** — anything that is not production. Tokens have no value, the faucet is free, and our daily gas budget is generous. Build here.
+
+**Mainnet (chain 1875)** — real USDC.e, real money, real consequences. Our mainnet gas budget is deliberately small, and mainnet settlement can be switched off entirely for operational reasons. Check [/health](/health) before you depend on it.
+
+## The toggle
+
+Every page on this site reads a single network selection, set by the control in the header. It changes:
+
+- every address, chain id, RPC and explorer link shown
+- every code sample — you copy snippets already pointed at the network you selected
+- the [transaction log](/logs) and the counters on the front page
+
+The selection is stored in your browser and mirrored into the URL as `?network=…`, so a link you paste into a chat opens on the same network you were reading.
+
+Right now you are reading the <NetVal k="networkName" mono={false} /> docs.
+
+## What differs in practice
+
+<div className="not-prose">
+  <div className="rounded-xl border border-ink-line bg-ink-raised px-4 py-2">
+    <NetField label="Network" k="networkName" />
+    <NetField label="Chain ID" k="chainId" />
+    <NetField label="CAIP-2 (what x402 calls it)" k="caip2" />
+    <NetField label="RPC" k="rpc" />
+    <NetField label="Explorer" k="explorer" />
+    <NetField label="Bridge" k="bridge" />
+    <NetField label="Faucet" k="faucet" />
+    <NetField label="USDC.e" k="usdc" />
+    <NetField label="USDT" k="usdt" />
+  </div>
+</div>
+
+<OnlyOn network="testnet">
+On Sepolia you can pay with either **USDC.e** or **USDT** — both support EIP-3009 natively.
+</OnlyOn>
+
+<OnlyOn network="mainnet">
+On mainnet only **USDC.e** is supported. Mainnet USDT is an older Tether contract with no
+`transferWithAuthorization`, so it cannot be paid gaslessly at all — see
+[supported assets](/docs/supported-assets) for the details and the on-chain evidence.
+</OnlyOn>
+
+## Switching an existing integration
+
+Change one string. The CAIP-2 network identifier in your `accepts` config, and the asset address that goes with it:
+
+<NetCode lang="ts">
+{`accepts: {
+  scheme: "exact",
+  network: "{{caip2}}",
+  payTo: "0xYourMerchantAddress",
+  price: {
+    asset: "{{asset}}",
+    amount: "10000",
+    extra: { name: "{{assetDomainName}}", version: "{{assetDomainVersion}}" },
+  },
+}`}
+</NetCode>
+
+The facilitator URL stays the same. Nothing else moves.
+
+> Do not reuse one address as both your testnet and mainnet merchant wallet if you can avoid it. The log is public, and tying your test traffic to your production revenue address makes both easier to analyse than you probably want.
+
+## Separate logs
+
+Each network writes to its own table, so the two views never mix. A mainnet figure on the front page is mainnet-only, and filtering the log by your address on testnet will not surface mainnet rows.

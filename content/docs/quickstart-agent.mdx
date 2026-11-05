@@ -1,0 +1,117 @@
+You have a script or an agent that needs to call a paid endpoint. It holds a stablecoin. It holds **no WBT**, and it does not need any.
+
+You are reading the <NetVal k="networkName" mono={false} /> version of this page.
+
+## 1. Install
+
+<NetCode lang="bash">
+{`npm install @x402/fetch @x402/evm viem`}
+</NetCode>
+
+## 2. Wrap fetch
+
+<NetCode filename="agent.ts">
+{`import { wrapFetchWithPayment, x402Client } from "@x402/fetch";
+import { ExactEvmScheme } from "@x402/evm/exact/client";
+import { privateKeyToAccount } from "viem/accounts";
+
+const account = privateKeyToAccount(process.env.AGENT_PRIVATE_KEY as \`0x\${string}\`);
+
+const client = new x402Client().register("{{caip2}}", new ExactEvmScheme(account));
+const fetchWithPay = wrapFetchWithPayment(fetch, client);
+
+const response = await fetchWithPay("{{facilitatorUrl}}/api/demo/joke");
+console.log(await response.json());
+
+// The settlement transaction hash, if you want to record it:
+console.log(response.headers.get("x-payment-response"));`}
+</NetCode>
+
+That is it. `wrapFetchWithPayment` makes the request, sees the 402, signs an authorization matching the terms, and retries with an `X-PAYMENT` header. Your code sees one `await` and a 200.
+
+## 3. Fund the agent — with the token only
+
+The account needs a balance of the asset it will pay in. That is all.
+
+<div className="not-prose">
+  <div className="rounded-xl border border-ink-line bg-ink-raised px-4 py-2">
+    <NetField label="Pay with" k="assetSymbol" />
+    <NetField label="Token address" k="asset" />
+    <NetField label="Chain ID" k="chainId" />
+  </div>
+  <p className="mt-2 text-xs text-chalk-dim">WBT required: none.</p>
+</div>
+
+<OnlyOn network="testnet">
+Get test tokens: see [testnet setup](/docs/quickstart-testnet).
+</OnlyOn>
+
+<OnlyOn network="mainnet">
+Bridge real USDC.e: see [mainnet setup](/docs/quickstart-mainnet). Start with cents, not dollars.
+</OnlyOn>
+
+Then confirm the WBT balance is zero and leave it that way — it is the clearest proof the flow works:
+
+<NetCode lang="bash">
+{`cast balance $AGENT_ADDRESS --rpc-url {{rpc}}      # expect 0
+cast call {{asset}} "balanceOf(address)(uint256)" $AGENT_ADDRESS --rpc-url {{rpc}}`}
+</NetCode>
+
+## What the agent actually signs
+
+Worth knowing, because you are authorising a token movement with a key:
+
+```ts
+// EIP-712 typed data, signed offline. Never broadcast by the agent.
+{
+  domain: { name: "…", version: "…", chainId: {{chainId}}, verifyingContract: "{{asset}}" },
+  primaryType: "TransferWithAuthorization",
+  message: {
+    from: agentAddress,
+    to: merchantAddress,   // fixed by the signature
+    value: "10000",        // fixed by the signature
+    validAfter, validBefore,
+    nonce: randomBytes32,  // single use, enforced on-chain
+  },
+}
+```
+
+The recipient and the amount are inside the signed message, so the facilitator cannot alter either. The nonce is consumed on-chain, so the signature cannot be replayed. The validity window bounds how long it is live. The only discretion we have is whether to submit it.
+
+## Spend controls
+
+The client can cap what it will agree to, which matters for an autonomous agent that follows links it did not choose:
+
+<NetCode lang="ts">
+{`const client = new x402Client({
+  spendControls: {
+    maxAmountPerPayment: "50000",   // 0.05 per call
+  },
+}).register("{{caip2}}", new ExactEvmScheme(account));`}
+</NetCode>
+
+Set this. An agent with an unbounded signer and a tool that fetches arbitrary URLs is a bad combination.
+
+## Paying by hand
+
+If you are implementing a client rather than using one, decode the 402 to see the terms:
+
+<NetCode lang="bash">
+{`curl -si {{facilitatorUrl}}/api/demo/joke \\
+  | grep -i '^payment-required:' \\
+  | cut -d' ' -f2 | base64 -d | jq`}
+</NetCode>
+
+You will get the `accepts` array. Pick an entry whose `network` and `asset` you can satisfy, sign the typed data above using that entry's `extra` as the domain `name`/`version`, and send it back base64-encoded in `X-PAYMENT`. The full field-by-field shape is in the [API reference](/docs/api-reference).
+
+## When it does not work
+
+| Symptom | Cause |
+| --- | --- |
+| `invalid_exact_evm_payload_signature` | The domain you signed under does not match the token. Almost always a wrong `extra.name` or `extra.version` from the merchant. |
+| `insufficient_funds` | The agent does not hold enough of the asset. Check the token balance, not the WBT balance. |
+| `unsupported_asset` | The merchant priced the route in a token we do not sponsor on that network. |
+| `amount_below_minimum` | Under 0.01 — gas would cost more than the payment. |
+| `429` | Rate limited. Back off for the `Retry-After` interval; nothing was broadcast. |
+| `503` with `daily_gas_budget_exhausted` | Our budget for today is spent. Resets at 00:00 UTC. |
+| Authorization expired | `maxTimeoutSeconds` elapsed between signing and settling. Sign and submit promptly. |

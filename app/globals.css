@@ -1,0 +1,133 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+
+  --color-ink: #05070a;
+  --color-ink-raised: #0b0f16;
+  --color-ink-line: #1b2230;
+  --color-chalk: #e8edf5;
+  --color-chalk-dim: #8e9aae;
+  --color-accent: #5fd4ff;
+  --color-testnet: #f0b429;
+  --color-mainnet: #34d399;
+  --color-danger: #fb7185;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background-color: var(--color-ink);
+  color: var(--color-chalk);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* A faint grid, so the page reads as instrumentation rather than marketing. */
+.bg-grid {
+  background-image:
+    linear-gradient(to right, color-mix(in oklab, var(--color-ink-line) 60%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in oklab, var(--color-ink-line) 60%, transparent) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, black 20%, transparent 75%);
+}
+
+/* Prose defaults for the MDX docs. Hand-rolled rather than @tailwindcss/typography:
+   the docs use a narrow, fixed set of elements and this is shorter than configuring it. */
+.prose-docs {
+  line-height: 1.7;
+}
+.prose-docs > * + * {
+  margin-top: 1rem;
+}
+.prose-docs h2 {
+  margin-top: 2.75rem;
+  font-size: 1.375rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  scroll-margin-top: 6rem;
+}
+.prose-docs h3 {
+  margin-top: 2rem;
+  font-size: 1.0625rem;
+  font-weight: 600;
+  color: var(--color-chalk);
+  scroll-margin-top: 6rem;
+}
+.prose-docs p,
+.prose-docs li {
+  color: color-mix(in oklab, var(--color-chalk) 82%, var(--color-chalk-dim));
+}
+.prose-docs a {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: color-mix(in oklab, var(--color-accent) 40%, transparent);
+}
+.prose-docs a:hover {
+  text-decoration-color: var(--color-accent);
+}
+.prose-docs ul {
+  list-style: disc;
+  padding-left: 1.25rem;
+}
+.prose-docs ol {
+  list-style: decimal;
+  padding-left: 1.25rem;
+}
+.prose-docs li + li {
+  margin-top: 0.375rem;
+}
+.prose-docs strong {
+  color: #fff;
+  font-weight: 600;
+}
+.prose-docs :not(pre) > code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  background: var(--color-ink-raised);
+  border: 1px solid var(--color-ink-line);
+  border-radius: 0.3rem;
+  padding: 0.1rem 0.3rem;
+  color: var(--color-chalk);
+}
+.prose-docs pre {
+  overflow-x: auto;
+  background: var(--color-ink-raised);
+  border: 1px solid var(--color-ink-line);
+  border-radius: 0.6rem;
+  padding: 1rem 1.1rem;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  line-height: 1.6;
+}
+.prose-docs blockquote {
+  border-left: 2px solid var(--color-accent);
+  padding-left: 1rem;
+  color: var(--color-chalk-dim);
+}
+.prose-docs table {
+  display: block;
+  overflow-x: auto;
+  width: 100%;
+  font-size: 0.875rem;
+  border-collapse: collapse;
+}
+.prose-docs th,
+.prose-docs td {
+  border: 1px solid var(--color-ink-line);
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  vertical-align: top;
+}
+.prose-docs th {
+  background: var(--color-ink-raised);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.prose-docs hr {
+  border-color: var(--color-ink-line);
+  margin-block: 2.5rem;
+}

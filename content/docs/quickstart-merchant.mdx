@@ -1,0 +1,176 @@
+You have an endpoint. You want it to cost 0.01 USDC.e per call, settled on Whitechain, with the payer needing no gas token. This takes one middleware and one config object.
+
+You are reading the <NetVal k="networkName" mono={false} /> version of this page — the snippets below already carry that network's addresses.
+
+## 1. Install
+
+<NetCode lang="bash">
+{`npm install @x402/express   # or @x402/hono, @x402/next`}
+</NetCode>
+
+## 2. Price the route
+
+<NetCode filename="server.ts">
+{`import express from "express";
+import { paymentMiddleware } from "@x402/express";
+
+const app = express();
+
+app.use(
+  paymentMiddleware(
+    {
+      "/api/report": {
+        accepts: {
+          scheme: "exact",
+          network: "{{caip2}}",
+          payTo: "0xYourMerchantAddress",
+          price: {
+            asset: "{{asset}}",
+            amount: "10000",
+            extra: { name: "{{assetDomainName}}", version: "{{assetDomainVersion}}" },
+          },
+          maxTimeoutSeconds: 60,
+        },
+        description: "One generated report",
+      },
+    },
+    { url: "{{facilitatorUrl}}" },
+  ),
+);
+
+app.get("/api/report", (_req, res) => {
+  res.json({ report: "the paid content" });
+});
+
+app.listen(3000);`}
+</NetCode>
+
+That is the whole integration. Unpaid requests get a 402 with your terms; paid requests reach your handler, and settlement happens after your handler returns a success.
+
+## Why the price is written out longhand
+
+Most x402 examples show `price: "$0.01"`. That shorthand works by looking the chain up in `@x402/evm`'s `DEFAULT_ASSETS` table to find a canonical stablecoin. **Neither Whitechain network is in that table**, so the dollar form has no asset to resolve to and will throw:
+
+```
+Asset address must be specified for AssetAmount on network eip155:1874
+```
+
+So you pass the three fields it would have filled in:
+
+| Field | What it is | Getting it wrong |
+| --- | --- | --- |
+| `asset` | Token contract address | Payment rejected as a non-allowlisted asset. Loud and obvious. |
+| `amount` | Base units — 6 decimals, so `10000` is 0.01 | You charge 1000× too much or too little. |
+| `extra` | The token's **EIP-712 domain** | **Every signature fails verification**, with nothing on-chain to debug. |
+
+That third row is the one that costs people an afternoon. The payer's wallet builds its signature under the domain you advertise; if the `name` or `version` is off by a character, the recovered signer is a different address and verification fails with `invalid_exact_evm_payload_signature`. There is no transaction, no revert, no log — just a payment that never works.
+
+So do not guess them. The values above are computed from each token's own `DOMAIN_SEPARATOR()` and re-checked on every deploy. You can also fetch them at runtime from [/assets](/assets):
+
+<NetCode lang="bash">
+{`curl -s {{facilitatorUrl}}/assets | jq '.networks[] | select(.network=="{{network}}") | .assets'`}
+</NetCode>
+
+## Next.js
+
+<NetCode filename="app/api/report/route.ts">
+{`import { NextResponse } from "next/server";
+import { withX402 } from "@x402/next";
+import { x402ResourceServer } from "@x402/core/server";
+import { HTTPFacilitatorClient } from "@x402/core/http";
+import { ExactEvmScheme } from "@x402/evm/exact/server";
+
+const server = new x402ResourceServer(
+  new HTTPFacilitatorClient({ url: "{{facilitatorUrl}}" }),
+).register("{{caip2}}", new ExactEvmScheme());
+
+export const GET = withX402(
+  async () => NextResponse.json({ report: "the paid content" }),
+  {
+    "/api/report": {
+      accepts: {
+        scheme: "exact",
+        network: "{{caip2}}",
+        payTo: "0xYourMerchantAddress",
+        price: {
+          asset: "{{asset}}",
+          amount: "10000",
+          extra: { name: "{{assetDomainName}}", version: "{{assetDomainVersion}}" },
+        },
+      },
+      description: "One generated report",
+    },
+  },
+  server,
+);`}
+</NetCode>
+
+`withX402` settles only after your handler returns a status below 400 — so a request that fails inside your code does not charge the customer. Prefer it over the middleware form when you generate the paid content on demand and it can fail.
+
+## Hono
+
+<NetCode filename="server.ts">
+{`import { Hono } from "hono";
+import { paymentMiddleware } from "@x402/hono";
+
+const app = new Hono();
+
+app.use(
+  paymentMiddleware(
+    {
+      "/api/report": {
+        accepts: {
+          scheme: "exact",
+          network: "{{caip2}}",
+          payTo: "0xYourMerchantAddress",
+          price: {
+            asset: "{{asset}}",
+            amount: "10000",
+            extra: { name: "{{assetDomainName}}", version: "{{assetDomainVersion}}" },
+          },
+        },
+      },
+    },
+    { url: "{{facilitatorUrl}}" },
+  ),
+);`}
+</NetCode>
+
+## Accepting more than one token
+
+`accepts` takes an array, and the payer picks whichever they hold. <OnlyOn network="testnet">On Sepolia that means USDC.e or USDT:</OnlyOn><OnlyOn network="mainnet">On mainnet only USDC.e qualifies, but the same shape lets you offer both networks at once:</OnlyOn>
+
+<NetCode lang="ts">
+{`accepts: [
+  {
+    scheme: "exact",
+    network: "{{caip2}}",
+    payTo: "0xYourMerchantAddress",
+    price: {
+      asset: "{{usdc}}",
+      amount: "10000",
+      extra: { name: "Bridged USDC (Whitechain)", version: "2" },
+    },
+  },
+  // Add a second entry per additional token or network you accept.
+]`}
+</NetCode>
+
+Our [demo endpoint](/docs/quickstart-agent) does exactly this: one 402 response that a testnet agent and a mainnet agent can each satisfy with what they have.
+
+## Verify it works
+
+<NetCode lang="bash">
+{`curl -i http://localhost:3000/api/report`}
+</NetCode>
+
+You want a `402`, a `PAYMENT-REQUIRED` header, and — once you base64-decode it — your `asset`, `amount` and `extra` echoed back exactly. If `extra` is empty there, stop and fix it before you go further: that is the failure mode described above.
+
+Then point an agent at it: [pay for an endpoint](/docs/quickstart-agent).
+
+## Things to get right before production
+
+- **`payTo` is where the money lands.** It is in the signed message, so neither we nor anyone else can redirect it — but a typo sends every payment to the typo. Check it on the explorer.
+- **Charge above the dust floor.** We refuse to sponsor payments below 0.01, because the gas would exceed the transfer. See [limits](/docs/limits).
+- **Handle a 402 that stays 402.** Settlement can fail after a valid verification — an expired authorization, a blocked payer, our budget running out. Treat it as a retryable failure, not a successful sale.
+- **Read [limits](/docs/limits).** Rate limits and daily gas budgets apply per merchant address.
