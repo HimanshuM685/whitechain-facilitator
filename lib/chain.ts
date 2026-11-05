@@ -87,8 +87,14 @@ let cachedAccount: Account | undefined;
 /** The gas-sponsoring account. Same key on both chains, so one address to fund. */
 export function facilitatorAccount(): Account {
   if (!cachedAccount) {
-    const key = process.env.FACILITATOR_PRIVATE_KEY;
-    if (!key) throw new Error("FACILITATOR_PRIVATE_KEY is not set");
+    // Dashboards often store the key quoted, with stray whitespace, or without
+    // the 0x that MetaMask's export omits. Accept all of those.
+    const raw = process.env.FACILITATOR_PRIVATE_KEY?.trim().replace(/^["']|["']$/g, "").trim();
+    if (!raw) throw new Error("FACILITATOR_PRIVATE_KEY is not set");
+    const key = raw.startsWith("0x") ? raw : `0x${raw}`;
+    if (!/^0x[0-9a-fA-F]{64}$/.test(key)) {
+      throw new Error("FACILITATOR_PRIVATE_KEY must be 64 hex characters (with or without 0x)");
+    }
     cachedAccount = privateKeyToAccount(key as `0x${string}`);
   }
   return cachedAccount;
