@@ -56,14 +56,32 @@ A candidate token must return the canonical EIP-3009 typehash and have a resolva
 
 ## Deploying
 
-Run it as a long-lived Node process — `pnpm build && pnpm start` — behind a reverse proxy. Railway, Fly or a plain VM are all fine.
+Two things to know about topology, because they affect what the guards actually guarantee:
 
-Two things to know about topology:
+- **Gas budgets are database-backed.** They stay correct no matter how many instances run. This was deliberate: the guard that caps real spending must not depend on process memory.
+- **Rate-limit counters are per process.** Each instance enforces its own share, so N instances means roughly N times the configured limit.
 
-- **Rate-limit counters are per process.** With more than one replica, each enforces its own share. The fix is a shared counter in Postgres or Redis; until you need it, run one instance.
-- **Gas budgets are database-backed**, so those stay correct no matter how many replicas you run. The money guard does not depend on process memory — that was deliberate.
+### A long-lived process — Railway, Fly, a VM
 
-Set `TRUST_PROXY`-style header handling at your proxy: client IP is read from `x-forwarded-for`, so if that header is attacker-controlled your per-IP limits are decorative.
+`pnpm build && pnpm start` behind a reverse proxy. One instance means the rate limits are exactly what you configured. This is the deployment the defaults assume.
+
+### Vercel and other serverless platforms
+
+Works, with one caveat. Add a `vercel.json` so the framework is detected:
+
+```json
+{ "framework": "nextjs" }
+```
+
+Set `FACILITATOR_PRIVATE_KEY`, `DATABASE_URL`, `MAINNET_ENABLED` and both `NEXT_PUBLIC_*` variables in the project's environment. The `NEXT_PUBLIC_*` ones are inlined at build time, so changing them needs a redeploy. `@neondatabase/serverless` talks to Postgres over HTTP, so no connection pooling to arrange.
+
+The caveat: concurrent lambdas each keep their own rate-limit counters, so **per-IP limits are much looser than configured**. What still holds is the part that matters — the daily gas budget is a database query, so your actual spend stays capped. Set the budgets conservatively and treat the rate limits as a courtesy rather than a control. If you need real per-IP limiting on serverless, move the token buckets in `lib/guards.ts` to a Postgres counter.
+
+### Client IP
+
+Rate limiting buckets on the client IP, which is only as trustworthy as the header it comes from. `clientIp()` prefers `x-vercel-forwarded-for`, `cf-connecting-ip` and `x-real-ip` — all written by the platform and not forgeable past the edge — and falls back to `x-forwarded-for` only if none are present. Behind your own proxy, make sure it rewrites `x-forwarded-for` rather than appending to whatever the caller sent.
+
+Per-payer and per-merchant limits are unaffected by any of this: those addresses come from the signed payload, not a header.
 
 ## Operating it
 

@@ -153,7 +153,7 @@ separates them from the website without changing a URL.
 Two design points worth knowing:
 
 - **One facilitator instance per network.** `FacilitatorEvmSigner` has no chain argument on `readContract`/`writeContract`, so a signer is bound to one chain. Requests dispatch on `paymentPayload.accepted.network`. The same key is used on both, so there is one address to fund — but budgets and kill switches are per network, because mainnet WBT is real money.
-- **Gas budgets are database-backed; rate limits are not.** The budget is a `sum(gas_cost_wei)` over today's settlements, so it stays correct no matter how many replicas run. Rate-limit counters are per process — correct for a single instance, which is the intended deployment.
+- **Gas budgets are database-backed; rate limits are not.** The budget is a `sum(gas_cost_wei)` over today's settlements, so it stays correct no matter how many instances run — deliberately, because that is the guard on real spending. Rate-limit counters are per process: exact on a single instance, looser on serverless. See [self-host](content/docs/self-host.mdx#deploying).
 
 ## Guards
 
@@ -204,7 +204,12 @@ pnpm smoke -- --network=mainnet --url=https://facilitator.example
 
 ## Self-hosting
 
-See [docs/self-host](content/docs/self-host.mdx) for the full environment reference. The short version: Node 22+, a Postgres URL, and a funded WBT wallet. Run it as a long-lived Node process (`pnpm build && pnpm start`) behind a reverse proxy — client IP is read from `x-forwarded-for`, so terminate that at a proxy you control or the per-IP limits are decorative.
+See [docs/self-host](content/docs/self-host.mdx) for the full environment reference. The short version: Node 22+, a Postgres URL, and a funded WBT wallet.
+
+Either deployment works:
+
+- **A long-lived process** (Railway, Fly, a VM): `pnpm build && pnpm start` behind a reverse proxy. Rate limits are exactly what you configured. This is what the defaults assume.
+- **Vercel / serverless**: needs `vercel.json` with `{ "framework": "nextjs" }`. Concurrent instances each hold their own rate-limit counters, so per-IP limits run looser than configured — the daily gas budget is a database query and still caps actual spend, so set budgets conservatively.
 
 To add an asset, edit `lib/networks.ts` and run `pnpm verify-assets`; it fails loudly rather than letting a wrong domain reach production.
 

@@ -159,4 +159,24 @@ await check("client IP comes from the proxy headers", () => {
   assert.equal(clientIp(new Headers()), "unknown");
 });
 
+// A caller can send x-forwarded-for themselves; the platform-written headers
+// cannot be forged past the edge. Reading the spoofable one first would let
+// anyone mint a fresh rate-limit bucket per request.
+await check("a platform-written IP header beats a caller-supplied one", () => {
+  const spoofed = new Headers({
+    "x-forwarded-for": "1.2.3.4",
+    "x-vercel-forwarded-for": "70.0.0.3",
+  });
+  assert.equal(clientIp(spoofed), "70.0.0.3");
+
+  assert.equal(
+    clientIp(new Headers({ "x-forwarded-for": "1.2.3.4", "cf-connecting-ip": "70.0.0.4" })),
+    "70.0.0.4",
+  );
+  assert.equal(
+    clientIp(new Headers({ "x-forwarded-for": "1.2.3.4", "x-real-ip": "70.0.0.5" })),
+    "70.0.0.5",
+  );
+});
+
 console.log(`\n${passed} checks passed.`);

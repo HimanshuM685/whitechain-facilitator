@@ -84,11 +84,27 @@ export function resetRateLimits(): void {
   buckets.clear();
 }
 
-/** Best-effort client IP from the usual proxy headers. */
+/**
+ * Client IP for rate-limit bucketing.
+ *
+ * Order matters for correctness, not preference. The first three headers are
+ * written by the platform and overwrite whatever the caller sent, so they are
+ * trustworthy. `x-forwarded-for` is last because a caller can send their own —
+ * and if we read it first, anyone could mint a fresh bucket per request by
+ * varying it. It is only safe when a proxy you control rewrites it.
+ *
+ * The per-payer and per-payTo limits are unaffected either way: those addresses
+ * come from the signed payload, not from a header.
+ */
+const TRUSTED_IP_HEADERS = ["x-vercel-forwarded-for", "cf-connecting-ip", "x-real-ip"] as const;
+
 export function clientIp(headers: Headers): string {
+  for (const header of TRUSTED_IP_HEADERS) {
+    const value = headers.get(header);
+    if (value) return value.split(",")[0]!.trim();
+  }
   const forwarded = headers.get("x-forwarded-for");
-  if (forwarded) return forwarded.split(",")[0]!.trim();
-  return headers.get("x-real-ip") ?? headers.get("cf-connecting-ip") ?? "unknown";
+  return forwarded ? forwarded.split(",")[0]!.trim() : "unknown";
 }
 
 /* ------------------------------------------------------------------ *
