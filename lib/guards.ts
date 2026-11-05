@@ -209,11 +209,29 @@ export async function preflight(input: PreflightInput): Promise<PreflightResult>
     };
   }
 
-  const [balance, spentToday, spentTodayForMerchant] = await Promise.all([
-    publicClientFor(input.net).getBalance({ address: facilitatorAccount().address }),
-    gasSpentTodayWei(input.net),
-    gasSpentTodayWei(input.net, input.payTo),
-  ]);
+  // Fail closed and say why. If the budget cannot be read — no migration run,
+  // database unreachable — we must not settle, because an unchecked budget is an
+  // uncapped spend. An opaque 500 would fail closed too, but reads as an outage
+  // rather than the configuration problem it almost always is.
+  let balance: bigint;
+  let spentToday: bigint;
+  let spentTodayForMerchant: bigint;
+  try {
+    [balance, spentToday, spentTodayForMerchant] = await Promise.all([
+      publicClientFor(input.net).getBalance({ address: facilitatorAccount().address }),
+      gasSpentTodayWei(input.net),
+      gasSpentTodayWei(input.net, input.payTo),
+    ]);
+  } catch (error) {
+    console.error(`[preflight] budget check failed on ${input.net}:`, (error as Error).message);
+    return {
+      kind: "http",
+      status: 503,
+      reason: "budget_unavailable",
+      message:
+        "The gas budget could not be read, so settlement is refused. Nothing was broadcast. See /health.",
+    };
+  }
 
   if (balance < config.minSignerBalanceWei) {
     return {

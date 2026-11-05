@@ -9,5 +9,19 @@ export const dynamic = "force-dynamic";
  * payment payload rather than in the facilitator endpoint.
  */
 export async function GET() {
-  return NextResponse.json(supported());
+  try {
+    return NextResponse.json(supported());
+  } catch (error) {
+    // Reaching here means the service is misconfigured — building the response
+    // needs the signer, so a missing FACILITATOR_PRIVATE_KEY lands here. Say so
+    // plainly instead of returning an opaque 500 that looks like an outage.
+    console.error("[supported] cannot build response:", (error as Error).message);
+    return NextResponse.json(
+      {
+        error: "not_configured",
+        message: "This facilitator is not fully configured. See /health.",
+      },
+      { status: 503 },
+    );
+  }
 }

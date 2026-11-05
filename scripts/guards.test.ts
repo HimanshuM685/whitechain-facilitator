@@ -141,6 +141,17 @@ await check("mainnet settle is refused while the kill switch is off", async () =
 
 // Verification spends nothing, so it must stay available even when settlement
 // is switched off — otherwise an integration cannot be validated at all.
+// No DATABASE_URL is set in this test run, so the budget read fails. A settle
+// must refuse rather than proceed with an unchecked budget — an unchecked budget
+// is an uncapped spend.
+await check("settle fails closed when the budget cannot be read", async () => {
+  resetRateLimits();
+  const result = await preflight({ ...base, phase: "settle", ip: "198.51.100.20" });
+  assert.equal(result.kind, "http");
+  assert.equal(result.kind === "http" && result.status, 503);
+  assert.equal(result.kind === "http" && result.reason, "budget_unavailable");
+});
+
 await check("mainnet verify still works while settle is disabled", async () => {
   const result = await preflight({
     ...base,
