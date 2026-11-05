@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { facilitatorFor } from "@/lib/facilitator";
-import { parseFacilitatorRequest, preflightResponse, errorResponse } from "@/lib/route-helpers";
+import { parseFacilitatorRequest, preflightResponse, errorResponse } from "@/lib/facilitator-http";
 import { preflight } from "@/lib/guards";
 import { NETWORKS } from "@/lib/networks";
 

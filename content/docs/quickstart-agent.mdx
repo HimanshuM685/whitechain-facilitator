@@ -20,7 +20,7 @@ const account = privateKeyToAccount(process.env.AGENT_PRIVATE_KEY as \`0x\${stri
 const client = new x402Client().register("{{caip2}}", new ExactEvmScheme(account));
 const fetchWithPay = wrapFetchWithPayment(fetch, client);
 
-const response = await fetchWithPay("{{facilitatorUrl}}/api/demo/joke");
+const response = await fetchWithPay("https://api.example.com/report");
 console.log(await response.json());
 
 // The settlement transaction hash, if you want to record it:
@@ -97,7 +97,7 @@ Set this. An agent with an unbounded signer and a tool that fetches arbitrary UR
 If you are implementing a client rather than using one, decode the 402 to see the terms:
 
 <NetCode lang="bash">
-{`curl -si {{facilitatorUrl}}/api/demo/joke \\
+{`curl -si https://api.example.com/report \\
   | grep -i '^payment-required:' \\
   | cut -d' ' -f2 | base64 -d | jq`}
 </NetCode>

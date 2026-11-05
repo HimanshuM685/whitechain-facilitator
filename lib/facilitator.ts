@@ -12,7 +12,6 @@
  */
 
 import { x402Facilitator } from "@x402/core/facilitator";
-import type { FacilitatorClient } from "@x402/core/server";
 import type {
   PaymentPayload,
   PaymentRequirements,
@@ -24,7 +23,6 @@ import type {
 import { registerExactEvmScheme } from "@x402/evm/exact/facilitator";
 import { facilitatorSignerFor, publicClientFor } from "./chain";
 import { logPayment } from "./db";
-import { preflight } from "./guards";
 import { findAsset, NETWORK_KEYS, NETWORKS, networkByCaip2, type NetworkKey } from "./networks";
 
 /** Shared fields pulled out of a payload for the log, minus anything replayable. */
@@ -139,69 +137,6 @@ export function networkKeyForCaip2(caip2: unknown): NetworkKey | undefined {
 }
 
 export type { PaymentPayload, PaymentRequirements, SettleResponse, VerifyResponse };
-
-/**
- * A FacilitatorClient that calls this process directly instead of going out over
- * HTTP to our own `/verify` and `/settle`.
- *
- * Used by the built-in demo endpoint. The alternative — an HTTPFacilitatorClient
- * pointed at our own origin — needs the server to be listening before the route
- * module can initialize, which is a bootstrap cycle during build and a pointless
- * loopback request at runtime.
- *
- * Guards still run: the demo endpoint gets its own rate-limit bucket rather than
- * a free pass, so it cannot quietly spend the shared gas budget.
- */
-export function inProcessFacilitatorClient(): FacilitatorClient {
-  const gate = async (requirements: PaymentRequirements, phase: "verify" | "settle") => {
-    const net = networkKeyForCaip2(requirements.network);
-    if (!net) {
-      return {
-        net: undefined,
-        refusal: { reason: "unsupported_network", message: `Not served: ${requirements.network}` },
-      } as const;
-    }
-    const result = await preflight({
-      net,
-      phase,
-      ip: "in-process:demo",
-      scheme: requirements.scheme,
-      network: requirements.network,
-      asset: requirements.asset,
-      amount: requirements.amount,
-      payTo: requirements.payTo,
-    });
-    return result.kind === "ok"
-      ? ({ net, refusal: undefined } as const)
-      : ({ net, refusal: { reason: result.reason, message: result.message } } as const);
-  };
-
-  return {
-    async verify(payload, requirements) {
-      const { net, refusal } = await gate(requirements, "verify");
-      if (refusal || !net) {
-        return { isValid: false, invalidReason: refusal!.reason, invalidMessage: refusal!.message };
-      }
-      return facilitatorFor(net).verify(payload, requirements);
-    },
-
-    async settle(payload, requirements) {
-      const { net, refusal } = await gate(requirements, "settle");
-      if (refusal || !net) {
-        return {
-          success: false,
-          errorReason: refusal!.reason,
-          errorMessage: refusal!.message,
-          transaction: "",
-          network: requirements.network,
-        };
-      }
-      return facilitatorFor(net).settle(payload, requirements);
-    },
-
-    getSupported: async () => supported(),
-  };
-}
 
 /**
  * The merged `/supported` body: both networks from one URL, since the network

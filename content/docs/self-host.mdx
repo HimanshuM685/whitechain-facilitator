@@ -30,9 +30,8 @@ Run `verify-assets` before anything else. It checks every allowlisted token's EI
 | `MAINNET_ENABLED` | `false` | Must be `true` to settle on chain 1875. Leave off until funded and verified. |
 | `RPC_URL_TESTNET` | public RPC | Use a dedicated endpoint under load. |
 | `RPC_URL_MAINNET` | public RPC | Same. |
-| `NEXT_PUBLIC_FACILITATOR_URL` | `http://localhost:3000` | Your public origin. Shown in docs and used by the demo route. |
+| `NEXT_PUBLIC_FACILITATOR_URL` | `http://localhost:3000` | Your public origin. Appears in the docs' snippets. |
 | `NEXT_PUBLIC_DEFAULT_NETWORK` | `testnet` | Which network the site opens on. |
-| `DEMO_MERCHANT_ADDRESS` | burn address | Where the demo endpoint's payments go. |
 | `MIN_AMOUNT_BASE_UNITS` | `10000` | Dust floor, 0.01 at 6 decimals. |
 | `MAX_SETTLE_GAS` | `300000` | Per-settlement ceiling. |
 | `MIN_SIGNER_BALANCE_WBT` | `0.05` | Below this, `/settle` returns 503 instead of broadcasting. |
@@ -47,7 +46,7 @@ Run `verify-assets` before anything else. It checks every allowlisted token's EI
 
 ## Changing the allowlist
 
-`lib/networks.ts` is the only place addresses live — the guards, the viem clients, the demo route, the docs components and the `/assets` endpoint all read from it. Add an asset there, then:
+`lib/networks.ts` is the only place addresses live — the guards, the viem clients, the docs components and the `/assets` endpoint all read from it. Add an asset there, then:
 
 ```bash
 pnpm verify-assets
@@ -81,4 +80,6 @@ Set `TRUST_PROXY`-style header handling at your proxy: client IP is read from `x
 
 ## Running without the website
 
-The facilitator endpoints are plain route handlers at the app root — `/verify`, `/settle`, `/supported`, `/assets`, `/health`. If you only want the API, delete `app/page.tsx`, `app/docs`, `app/logs` and `components/`. Nothing in `lib/` depends on them.
+The facilitator endpoints are plain route handlers in `app/(facilitator)/` — a route group, so they serve at the bare origin: `/verify`, `/settle`, `/supported`, `/assets`, `/health`.
+
+If you only want the API, delete `app/page.tsx`, `app/docs/`, `app/logs/`, `app/api/`, `components/`, `content/`, `mdx-components.tsx` and `app/globals.css`. Nothing in `app/(facilitator)/` or `lib/` depends on any of them.

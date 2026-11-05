@@ -47,9 +47,8 @@ Whitechain Sepolia  USDC.e  0x5Eb541ba8A2DD841aF7864c3389162a23ddA8401
 | `GET /health` | Per-network balance, budget, block height. `503` when degraded. |
 | `GET /api/logs` | The payment log behind `/logs`. |
 | `GET /api/stats` | Per-network totals. |
-| `GET /api/demo/joke` | A live endpoint that costs 0.01 USDC.e. |
 
-The facilitator routes sit at the app root because `HTTPFacilitatorClient` builds `${url}/verify` — so the base URL is the bare origin, with no rewrites. One URL serves both networks, since x402 carries the network inside the payment payload.
+The base URL is the bare origin — no `/api` prefix, no rewrites — because `HTTPFacilitatorClient` builds `${url}/verify`. One URL serves both networks, since x402 carries the network inside the payment payload.
 
 ## Using it as a merchant
 
@@ -121,15 +120,35 @@ Both are OP Stack L2s settling to Ethereum. Permit2 (`0x0000…78BA3`) and Multi
 All the protocol work is in the official libraries. `@x402/core/facilitator` and `@x402/evm/exact/facilitator` handle EIP-712 recovery (including EIP-1271 smart accounts), balance checks, simulation, nonce handling and `settlement_pending` reconciliation. None of it is reimplemented.
 
 ```
-lib/networks.ts   network + asset registry — the only place addresses live
-lib/chain.ts      viem clients per chain, the facilitator signer, domain verification
-lib/facilitator.ts one x402Facilitator per network + logging hooks
-lib/guards.ts     allowlist, dust floor, rate limits, gas budgets, kill switch
-lib/db.ts         Neon Postgres: the payment log and the budget query
-app/{verify,settle,supported,assets,health}/  facilitator API
-app/{page,logs,docs}/                         website
-content/docs/*.mdx                            documentation
+lib/
+  networks.ts          network + asset registry — the only place addresses live
+  chain.ts             viem clients per chain, the signer, EIP-712 domain verification
+  facilitator.ts       one x402Facilitator per network + logging hooks
+  facilitator-http.ts  request parsing and refusal shaping for /verify and /settle
+  guards.ts            allowlist, dust floor, rate limits, gas budgets, kill switch
+  db.ts                Neon Postgres — the payment log and the budget query
+  docs-nav.ts          docs table of contents, and the route manifest
+
+app/
+  (facilitator)/       the x402 API. Route group, so these stay at the root:
+    verify/            POST /verify
+    settle/            POST /settle
+    supported/         GET  /supported
+    assets/            GET  /assets
+    health/            GET  /health
+  api/{logs,stats}/    JSON behind the log page
+  page.tsx             landing
+  logs/                public transaction log
+  docs/                MDX renderer + sidebar
+
+content/docs/*.mdx     the documentation itself
+db/schema.sql          templated once per network by scripts/migrate.ts
+scripts/               migrate, verify-assets, smoke, guards.test
 ```
+
+The facilitator endpoints live in a route group rather than under `/api` so they
+stay at the bare origin, which is what `HTTPFacilitatorClient` expects. The group
+separates them from the website without changing a URL.
 
 Two design points worth knowing:
 
@@ -168,10 +187,19 @@ pnpm verify-assets    # asset registry vs. both live chains
 pnpm smoke            # end-to-end; needs SMOKE_PAYER_PRIVATE_KEY
 ```
 
-`pnpm smoke` is the one that proves the product: an account holding the stablecoin and **zero WBT** pays the demo endpoint, and the test asserts the WBT balance is still exactly zero afterwards. If it moved, gas was not sponsored. It also checks that the 402 advertises the right EIP-712 domain, that a transaction hash came back, that the token balance fell, and that the settlement landed in the log.
+`pnpm smoke` is the one that proves the product. It builds a payment with the same `@x402/evm` client a real agent uses and posts it to `/verify` and `/settle`, then asserts:
+
+- the payer held **zero WBT** before, and still holds exactly zero after — if it moved, gas was not sponsored
+- the payer's token balance fell by exactly the authorized amount
+- `payTo` received exactly that amount, so the funds went where the signature said
+- the facilitator's own WBT balance fell, so it is the one that paid
+- `/assets` advertised the EIP-712 domain the signature was actually built with
+- the settlement landed in the public log
+
+It needs `SMOKE_PAYER_PRIVATE_KEY` (an account with the stablecoin and no WBT) and `SMOKE_PAY_TO`.
 
 ```bash
-pnpm smoke -- --network=mainnet --url=https://your-facilitator.example
+pnpm smoke -- --network=mainnet --url=https://facilitator.example
 ```
 
 ## Self-hosting

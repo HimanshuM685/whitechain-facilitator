@@ -1,7 +1,7 @@
 /**
  * Single source of truth for Whitechain networks and the assets this facilitator
  * will sponsor gas for. Everything else — viem clients, guards, docs components,
- * the demo endpoint, the DB table names — reads from here.
+ * the DB table names, the /assets endpoint — reads from here.
  *
  * Only EIP-3009 assets belong in `assets`. The facilitator settles exclusively via
  * `transferWithAuthorization`, so a token without it simply cannot be paid gaslessly.

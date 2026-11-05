@@ -13,15 +13,15 @@ Your endpoint answers an unpaid request with `402 Payment Required` and the term
 - **A public log.** Every verification and settlement, with the explorer link and the WBT we spent on it: [transaction log](/logs).
 - **Standard clients.** `@x402/express`, `@x402/hono`, `@x402/next`, `@x402/fetch`, `@x402/axios` all work unmodified.
 
-## Try it in one command
-
-A live endpoint that costs 0.01 USDC.e. Unpaid, it answers 402 with the terms:
+## Check it is up
 
 <NetCode lang="bash">
-{`curl -i {{facilitatorUrl}}/api/demo/joke`}
+{`curl -s {{facilitatorUrl}}/supported | jq
+curl -s {{facilitatorUrl}}/assets   | jq
+curl -s {{facilitatorUrl}}/health   | jq`}
 </NetCode>
 
-To actually pay it, see [pay for an endpoint](/docs/quickstart-agent).
+`/supported` tells you which networks are live and which address pays your gas. `/assets` gives you the exact `accepts` config to paste into your route.
 
 ## Where to go next
 
