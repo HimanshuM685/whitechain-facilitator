@@ -78,8 +78,8 @@ export const DOCS: DocSection[] = [
       },
       {
         slug: "limits",
-        title: "Limits and budgets",
-        summary: "Rate limits, daily gas budgets, and what a 429 or 503 means.",
+        title: "Limits",
+        summary: "Rate limits, the gas wallet, and what a 429 or 503 means.",
       },
       {
         slug: "self-host",

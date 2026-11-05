@@ -44,7 +44,7 @@ Whitechain Sepolia  USDT  0xcedfB56113143d55b2358b8CFbB0dEB5Ad2f55a7
 | `POST /settle` | Submits the authorization on-chain and pays the WBT fee. |
 | `GET /supported` | Scheme and network discovery, plus the signer that pays your gas. |
 | `GET /assets` | Allowlisted assets per network with their **verified** EIP-712 domains. |
-| `GET /health` | Per-network balance, budget, block height. `503` when degraded. |
+| `GET /health` | Per-network signer balance and block height. `503` when degraded. |
 | `GET /api/logs` | The payment log behind `/logs`. |
 | `GET /api/stats` | Per-network totals. |
 
@@ -123,8 +123,8 @@ lib/
   chain.ts             viem clients per chain, the signer, EIP-712 domain verification
   facilitator.ts       one x402Facilitator per network + logging hooks
   facilitator-http.ts  request parsing and refusal shaping for /verify and /settle
-  guards.ts            allowlist, dust floor, rate limits, gas budgets, kill switch
-  db.ts                Neon Postgres — the payment log and the budget query
+  guards.ts            allowlist, dust floor, rate limits, signer balance floor, kill switch
+  db.ts                Neon Postgres — the public payment log
   docs-nav.ts          docs table of contents, and the route manifest
 
 app/
@@ -150,8 +150,8 @@ separates them from the website without changing a URL.
 
 Two design points worth knowing:
 
-- **One facilitator instance per network.** `FacilitatorEvmSigner` has no chain argument on `readContract`/`writeContract`, so a signer is bound to one chain. Requests dispatch on `paymentPayload.accepted.network`. The same key is used on both, so there is one address to fund — but budgets and kill switches are per network, because mainnet WBT is real money.
-- **Gas budgets are database-backed; rate limits are not.** The budget is a `sum(gas_cost_wei)` over today's settlements, so it stays correct no matter how many instances run — deliberately, because that is the guard on real spending. Rate-limit counters are per process: exact on a single instance, looser on serverless. See [self-host](content/docs/self-host.mdx#deploying).
+- **One facilitator instance per network.** `FacilitatorEvmSigner` has no chain argument on `readContract`/`writeContract`, so a signer is bound to one chain. Requests dispatch on `paymentPayload.accepted.network`. The same key is used on both, so there is one address to fund — but the kill switch is per network, because mainnet WBT is real money.
+- **No gas budget.** Spend is capped only by the signer's WBT balance. Rate-limit counters are per process: exact on a single instance, looser on serverless. See [self-host](content/docs/self-host.mdx#deploying).
 
 ## Guards
 
@@ -162,8 +162,6 @@ The private key is the only thing at risk, and only for gas. Every request runs 
 | Network + asset allowlist, scoped per network | — |
 | Mainnet kill switch (`/verify` unaffected) | `MAINNET_ENABLED=false` |
 | Dust floor | 0.01 (`10000` base units) |
-| Daily gas budget, per network | 1 WBT testnet / 0.5 WBT mainnet |
-| Daily gas budget, per merchant | 0.1 / 0.05 WBT |
 | Rate limits (IP / payer / merchant / global per minute) | 120 / 30 / 120 / 1200 |
 | Per-settlement gas cap | 300,000 |
 | Low-balance refusal | below 0.05 WBT |
@@ -174,7 +172,7 @@ Signatures and authorization nonces are never written to the database — only t
 
 ## Database
 
-Neon (or any) Postgres, via `DATABASE_URL`. One table per network, `payments_testnet` and `payments_mainnet`, generated from a single templated `db/schema.sql` so they cannot drift. A unique partial index on `tx_hash` makes the settle-retry path idempotent and stops a retry double-counting gas against the budget.
+Neon (or any) Postgres, via `DATABASE_URL`. One table per network, `payments_testnet` and `payments_mainnet`, generated from a single templated `db/schema.sql` so they cannot drift. A unique partial index on `tx_hash` makes the settle-retry path idempotent and stops a retry logging the same transaction twice.
 
 ## Testing
 
@@ -207,7 +205,7 @@ See [docs/self-host](content/docs/self-host.mdx) for the full environment refere
 Either deployment works:
 
 - **A long-lived process** (Railway, Fly, a VM): `pnpm build && pnpm start` behind a reverse proxy. Rate limits are exactly what you configured. This is what the defaults assume.
-- **Vercel / serverless**: needs `vercel.json` with `{ "framework": "nextjs" }`. Concurrent instances each hold their own rate-limit counters, so per-IP limits run looser than configured — the daily gas budget is a database query and still caps actual spend, so set budgets conservatively.
+- **Vercel / serverless**: needs `vercel.json` with `{ "framework": "nextjs" }`. Concurrent instances each hold their own rate-limit counters, so per-IP limits run looser than configured — spend is capped only by the signer's WBT balance.
 
 To add an asset, edit `lib/networks.ts` and run `pnpm verify-assets`; it fails loudly rather than letting a wrong domain reach production.
 

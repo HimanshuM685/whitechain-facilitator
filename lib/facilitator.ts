@@ -23,7 +23,6 @@ import type {
 import { registerExactEvmScheme } from "@x402/evm/exact/facilitator";
 import { facilitatorSignerFor, publicClientFor } from "./chain";
 import { logPayment } from "./db";
-import { config } from "./guards";
 import { findAsset, NETWORK_KEYS, NETWORKS, networkByCaip2, type NetworkKey } from "./networks";
 import { safeErrorMessage } from "./redact";
 
@@ -40,92 +39,33 @@ function describe(payload: PaymentPayload, requirements: PaymentRequirements, ne
   };
 }
 
-/** Whitechain's minimum base fee. Used only as a floor when estimating. */
+/** Whitechain's minimum base fee; fallback when a receipt omits the price. */
 const FLOOR_GAS_PRICE_WEI = 5_000_000_000n;
 
 /**
- * Settlement gas actually spent, read from the receipt. SettleResponse does not
- * carry it, but the daily budget is a sum over this column, so it has to be
- * fetched.
- *
- * On failure it charges the budget a conservative over-estimate rather than
- * recording null. Null would mean a settlement that spent real WBT counted as
- * zero against the cap — so anyone able to make receipt reads fail would get
- * unmetered gas. Overcounting only refuses settles slightly early, which is the
- * safe direction for the guard on real spending.
+ * Settlement gas actually spent, read from the receipt, for the public log.
+ * SettleResponse does not carry it. Null if the receipt cannot be read.
  */
 async function receiptCost(net: NetworkKey, txHash: string) {
-  const client = publicClientFor(net);
   try {
-    const receipt = await client.getTransactionReceipt({ hash: txHash as `0x${string}` });
-    const gasUsed = receipt.gasUsed;
+    const receipt = await publicClientFor(net).waitForTransactionReceipt({
+      hash: txHash as `0x${string}`,
+      timeout: 8_000,
+    });
     const price = receipt.effectiveGasPrice ?? FLOOR_GAS_PRICE_WEI;
-    return { gas_used: gasUsed.toString(), gas_cost_wei: (gasUsed * price).toString() };
+    return { gas_used: receipt.gasUsed.toString(), gas_cost_wei: (receipt.gasUsed * price).toString() };
   } catch {
-    // The transaction may simply not be indexed yet; give it one short wait.
-    try {
-      const receipt = await client.waitForTransactionReceipt({
-        hash: txHash as `0x${string}`,
-        timeout: 8_000,
-      });
-      const price = receipt.effectiveGasPrice ?? FLOOR_GAS_PRICE_WEI;
-      return {
-        gas_used: receipt.gasUsed.toString(),
-        gas_cost_wei: (receipt.gasUsed * price).toString(),
-      };
-    } catch {
-      console.warn(`[settle] receipt unreadable for ${txHash} on ${net}; charging budget the worst case`);
-      return worstCaseCost();
-    }
+    return { gas_used: null, gas_cost_wei: null };
   }
 }
 
-/** Upper bound for one settlement, charged whenever the real cost is unknowable. */
-const worstCaseCost = () => ({ gas_used: null, gas_cost_wei: (config.maxSettleGas * FLOOR_GAS_PRICE_WEI).toString() });
-
-/** EIP-3009 authorization nonce of a payload, if it has one. */
-const nonceOf = (payload: PaymentPayload): string | undefined =>
-  (payload.payload as { authorization?: { nonce?: string } }).authorization?.nonce?.toLowerCase();
-
-/**
- * Cost to record for a settle that came back without a transaction hash.
- *
- * Normally that means nothing was broadcast. But if `writeContract` threw — an
- * RPC timeout on `eth_sendRawTransaction` is the realistic case — the
- * transaction may have propagated anyway, and its hash is lost. Those are
- * charged the worst case so the budget never under-counts.
- */
-function costWithoutHash(unconfirmed: Set<string>, payload: PaymentPayload) {
-  const nonce = nonceOf(payload);
-  return nonce !== undefined && unconfirmed.delete(nonce)
-    ? worstCaseCost()
-    : { gas_used: null, gas_cost_wei: null };
-}
+const NO_COST = { gas_used: null, gas_cost_wei: null };
 
 function build(net: NetworkKey): x402Facilitator {
   const facilitator = new x402Facilitator();
 
-  // Authorization nonces whose broadcast threw: the tx may be on-chain with no
-  // hash to show for it. Consumed by `costWithoutHash`.
-  // ponytail: per-instance memory; an entry whose settle never reaches a hook
-  // (it always does today) would linger until restart.
-  const unconfirmed = new Set<string>();
-  const signer = facilitatorSignerFor(net);
-
   registerExactEvmScheme(facilitator, {
-    signer: {
-      ...signer,
-      writeContract: async (args) => {
-        try {
-          return await signer.writeContract(args);
-        } catch (error) {
-          // transferWithAuthorization(from, to, value, validAfter, validBefore, nonce, ...)
-          const nonce = args.args?.[5];
-          if (typeof nonce === "string") unconfirmed.add(nonce.toLowerCase());
-          throw error;
-        }
-      },
-    },
+    signer: facilitatorSignerFor(net),
     networks: NETWORKS[net].caip2,
     // Re-simulate inside settle so a payment that would revert on-chain is
     // never broadcast. Costs one extra eth_call; saves a wasted WBT fee.
@@ -159,9 +99,7 @@ function build(net: NetworkKey): x402Facilitator {
       started.set(ctx.paymentPayload, Date.now());
     })
     .onAfterSettle(async ({ paymentPayload, requirements, result }) => {
-      const cost = result.transaction
-        ? await receiptCost(net, result.transaction)
-        : costWithoutHash(unconfirmed, paymentPayload);
+      const cost = result.transaction ? await receiptCost(net, result.transaction) : NO_COST;
       await logPayment(net, {
         kind: "settle",
         ok: result.success,
@@ -184,7 +122,7 @@ function build(net: NetworkKey): x402Facilitator {
         payer: null,
         tx_hash: null,
         latency_ms: elapsed(paymentPayload),
-        ...costWithoutHash(unconfirmed, paymentPayload),
+        ...NO_COST,
         ...describe(paymentPayload, requirements, net),
       });
     });

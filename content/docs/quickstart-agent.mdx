@@ -113,5 +113,5 @@ You will get the `accepts` array. Pick an entry whose `network` and `asset` you 
 | `unsupported_asset` | The merchant priced the route in a token we do not sponsor on that network. |
 | `amount_below_minimum` | Under 0.01 — gas would cost more than the payment. |
 | `429` | Rate limited. Back off for the `Retry-After` interval; nothing was broadcast. |
-| `503` with `daily_gas_budget_exhausted` | Our budget for today is spent. Resets at 00:00 UTC. |
+| `503` with `signer_balance_low` | Our gas wallet needs topping up. Retry later. |
 | Authorization expired | `maxTimeoutSeconds` elapsed between signing and settling. Sign and submit promptly. |

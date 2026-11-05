@@ -1,5 +1,5 @@
 /**
- * Neon Postgres access for the payment log. One table per network, named in
+ * Neon Postgres access for the payment log (public log only; settlement does not depend on it). One table per network, named in
  * lib/networks.ts. Raw SQL via the Neon HTTP driver — no ORM for four queries.
  *
  * Table names are interpolated as identifiers, which is only safe because they
@@ -63,7 +63,7 @@ export function parseCursor(before: string): { ts: string; id: string | null } {
  * Appends one log entry. Deliberately never throws: a logging failure must not
  * turn a settled on-chain payment into an HTTP error for the merchant. The
  * `on conflict do nothing` pairs with the unique partial index on tx_hash so a
- * retried settle does not double-count gas against the daily budget.
+ * retried settle does not log the same transaction twice.
  */
 export async function logPayment(net: NetworkKey, row: PaymentInsert): Promise<void> {
   const table = tableFor(net);
@@ -95,27 +95,6 @@ export async function logPayment(net: NetworkKey, row: PaymentInsert): Promise<v
   } catch (error) {
     console.error(`[db] failed to log ${row.kind} on ${net}:`, (error as Error).message);
   }
-}
-
-/**
- * Total WBT (wei) this network has sponsored since 00:00 UTC today.
- *
- * Counts every settle row, not just successful ones: a reverted transaction or
- * one still `settlement_pending` spent real gas too. Rows that never broadcast
- * carry a null cost and drop out of the sum on their own.
- */
-export async function gasSpentTodayWei(net: NetworkKey, payTo?: string): Promise<bigint> {
-  const table = tableFor(net);
-  const where = payTo ? "and lower(pay_to) = lower($1)" : "";
-  const rows = (await db().query(
-    `select coalesce(sum(gas_cost_wei), 0)::text as total
-       from ${table}
-      where kind = 'settle'
-        and created_at >= date_trunc('day', now() at time zone 'utc')
-        ${where}`,
-    payTo ? [payTo] : [],
-  )) as { total: string }[];
-  return BigInt(rows[0]?.total ?? "0");
 }
 
 export type LogQuery = {

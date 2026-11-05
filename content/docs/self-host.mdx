@@ -1,4 +1,4 @@
-The hosted instance is free and best-effort. If you need guaranteed capacity, your own gas budget, your own asset allowlist, or you simply do not want a third party seeing your payment metadata, run it yourself. It is one Next.js app and a Postgres database.
+The hosted instance is free and best-effort. If you need guaranteed capacity, your own asset allowlist, or you simply do not want a third party seeing your payment metadata, run it yourself. It is one Next.js app and a Postgres database.
 
 Your merchants' configuration changes by exactly one string — the facilitator URL.
 
@@ -35,10 +35,6 @@ Run `verify-assets` before anything else. It checks every allowlisted token's EI
 | `MIN_AMOUNT_BASE_UNITS` | `10000` | Dust floor, 0.01 at 6 decimals. |
 | `MAX_SETTLE_GAS` | `300000` | Per-settlement ceiling. |
 | `MIN_SIGNER_BALANCE_WBT` | `0.05` | Below this, `/settle` returns 503 instead of broadcasting. |
-| `GAS_BUDGET_DAILY_WBT_TESTNET` | `1` | Resets 00:00 UTC. |
-| `GAS_BUDGET_DAILY_WBT_MAINNET` | `0.5` | |
-| `GAS_BUDGET_PER_PAYTO_DAILY_WBT_TESTNET` | `0.1` | Per merchant. |
-| `GAS_BUDGET_PER_PAYTO_DAILY_WBT_MAINNET` | `0.05` | |
 | `RATE_LIMIT_IP_PER_MIN` | `120` | |
 | `RATE_LIMIT_PAYER_PER_MIN` | `30` | |
 | `RATE_LIMIT_PAYTO_PER_MIN` | `120` | |
@@ -58,7 +54,6 @@ A candidate token must return the canonical EIP-3009 typehash and have a resolva
 
 Two things to know about topology, because they affect what the guards actually guarantee:
 
-- **Gas budgets are database-backed.** They stay correct no matter how many instances run. This was deliberate: the guard that caps real spending must not depend on process memory.
 - **Rate-limit counters are per process.** Each instance enforces its own share, so N instances means roughly N times the configured limit.
 
 ### A long-lived process — Railway, Fly, a VM
@@ -75,7 +70,7 @@ Works, with one caveat. Add a `vercel.json` so the framework is detected:
 
 Set `FACILITATOR_PRIVATE_KEY`, `DATABASE_URL`, `MAINNET_ENABLED` and both `NEXT_PUBLIC_*` variables in the project's environment. The `NEXT_PUBLIC_*` ones are inlined at build time, so changing them needs a redeploy. `@neondatabase/serverless` talks to Postgres over HTTP, so no connection pooling to arrange.
 
-The caveat: concurrent lambdas each keep their own rate-limit counters, so **per-IP limits are much looser than configured**. What still holds is the part that matters — the daily gas budget is a database query, so your actual spend stays capped. Set the budgets conservatively and treat the rate limits as a courtesy rather than a control. If you need real per-IP limiting on serverless, move the token buckets in `lib/guards.ts` to a Postgres counter.
+The caveat: concurrent lambdas each keep their own rate-limit counters, so **per-IP limits are much looser than configured**. There is no gas budget, so spend is capped only by the signer's WBT balance — fund it with what you are willing to lose. If you need real per-IP limiting on serverless, move the token buckets in `lib/guards.ts` to a Postgres counter.
 
 ### Client IP
 

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { formatEther } from "viem";
 import { facilitatorAccount, publicClientFor } from "@/lib/chain";
-import { dbHealthy, gasSpentTodayWei } from "@/lib/db";
+import { dbHealthy } from "@/lib/db";
 import { config } from "@/lib/guards";
 import { NETWORK_KEYS, NETWORKS, type NetworkKey } from "@/lib/networks";
 import { safeErrorMessage } from "@/lib/redact";
@@ -19,7 +19,6 @@ type NetworkHealth = {
   blockNumber?: string;
   balanceWbt?: string;
   gasPriceGwei?: string;
-  budget?: { dailyWbt: string; spentTodayWbt: string; remainingWbt: string };
   estimatedSettlesLeft?: number;
 };
 
@@ -32,62 +31,29 @@ async function networkHealth(net: NetworkKey, signer: `0x${string}`): Promise<Ne
     return { ...base, status: "disabled", detail: "MAINNET_ENABLED is not true; /verify still works." };
   }
 
-  // The chain reads and the budget read fail for unrelated reasons, so they are
-  // settled separately — a database outage reported as "RPC unreachable" sends
-  // whoever is debugging it in exactly the wrong direction.
   const client = publicClientFor(net);
-  const [chainState, budgetState] = await Promise.allSettled([
-    Promise.all([
+  let balance: bigint, blockNumber: bigint, gasPrice: bigint;
+  try {
+    [balance, blockNumber, gasPrice] = await Promise.all([
       client.getBalance({ address: signer }),
       client.getBlockNumber(),
       client.getGasPrice(),
-    ]),
-    gasSpentTodayWei(net),
-  ]);
-
-  if (chainState.status === "rejected") {
-    return { ...base, status: "degraded", detail: `RPC unreachable: ${safeMessage(chainState.reason)}` };
+    ]);
+  } catch (error) {
+    return { ...base, status: "degraded", detail: `RPC unreachable: ${safeMessage(error)}` };
   }
 
-  const [balance, blockNumber, gasPrice] = chainState.value;
-  const chainFacts = {
-    blockNumber: blockNumber.toString(),
-    balanceWbt: formatEther(balance),
-    gasPriceGwei: (Number(gasPrice) / 1e9).toFixed(2),
-  };
-
-  if (budgetState.status === "rejected") {
-    return {
-      ...base,
-      ...chainFacts,
-      status: "degraded",
-      detail: `Budget unreadable (database): ${safeMessage(budgetState.reason)}`,
-    };
-  }
-
-  const spentToday = budgetState.value;
-  const daily = config.gasBudgetDailyWei[net];
-  const remaining = daily > spentToday ? daily - spentToday : 0n;
-  // Whichever runs out first — our wallet or today's budget — caps throughput.
-  const spendable = balance < remaining ? balance : remaining;
   const perSettle = gasPrice * TYPICAL_SETTLE_GAS;
   const lowBalance = balance < config.minSignerBalanceWei;
 
   return {
     ...base,
-    ...chainFacts,
-    status: lowBalance || remaining === 0n ? "degraded" : "ok",
-    detail: lowBalance
-      ? "Signer WBT balance is below the operating floor."
-      : remaining === 0n
-        ? "Daily gas budget is spent; resets at 00:00 UTC."
-        : undefined,
-    budget: {
-      dailyWbt: formatEther(daily),
-      spentTodayWbt: formatEther(spentToday),
-      remainingWbt: formatEther(remaining),
-    },
-    estimatedSettlesLeft: perSettle > 0n ? Number(spendable / perSettle) : 0,
+    status: lowBalance ? "degraded" : "ok",
+    detail: lowBalance ? "Signer WBT balance is below the operating floor." : undefined,
+    blockNumber: blockNumber.toString(),
+    balanceWbt: formatEther(balance),
+    gasPriceGwei: (Number(gasPrice) / 1e9).toFixed(2),
+    estimatedSettlesLeft: perSettle > 0n ? Number(balance / perSettle) : 0,
   };
 }
 
@@ -111,7 +77,8 @@ export async function GET() {
     dbHealthy(),
   ]);
 
-  const degraded = !db || networks.some((n) => n.status === "degraded");
+  // The database only holds the public log; settlement works without it.
+  const degraded = networks.some((n) => n.status === "degraded");
   return NextResponse.json(
     { status: degraded ? "degraded" : "ok", signer, db: db ? "ok" : "unreachable", networks },
     { status: degraded ? 503 : 200 },

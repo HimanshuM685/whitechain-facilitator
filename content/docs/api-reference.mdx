@@ -148,7 +148,6 @@ Per-network operational state. Returns `200` when healthy, `503` when degraded, 
       "blockNumber": "…",
       "balanceWbt": "…",
       "gasPriceGwei": "5.00",
-      "budget": { "dailyWbt": "1.0", "spentTodayWbt": "0.0123", "remainingWbt": "0.9877" },
       "estimatedSettlesLeft": 2300
     }
   ]
@@ -204,8 +203,6 @@ Operational refusals use HTTP status codes, because they are about us rather tha
 | `429` | `rate_limited` | Over a per-IP, per-payer or per-merchant limit. `Retry-After` is set. |
 | `503` | `mainnet_disabled` | Mainnet settlement off; `/verify` unaffected |
 | `503` | `signer_balance_low` | Our WBT is below the operating floor |
-| `503` | `budget_unavailable` | The gas budget could not be read, so settlement fails closed |
-| `503` | `daily_gas_budget_exhausted` | Network budget spent; resets 00:00 UTC |
-| `503` | `merchant_gas_budget_exhausted` | This `payTo` used its daily allowance |
+| `503` | `signer_unavailable` | Signer key or RPC unavailable; nothing was broadcast |
 
 Nothing is ever broadcast on a `429` or `503`, so these cost you nothing but a retry.

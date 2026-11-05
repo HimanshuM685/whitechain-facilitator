@@ -34,5 +34,5 @@ curl -s {{facilitatorUrl}}/health   | jq`}
 
 - The `exact` scheme only, settled via EIP-3009. No Permit2 path, because every asset we allowlist supports EIP-3009 natively.
 - Allowlisted assets only. A relayer that sponsors any token it is handed is a free gas faucet for spam.
-- Rate limits and a daily gas budget per network. See [limits](/docs/limits).
-- Single instance: rate-limit counters live in process memory. The gas budget is in Postgres, so that one stays correct regardless.
+- Rate limits per IP, payer and merchant. See [limits](/docs/limits).
+- Single instance: rate-limit counters live in process memory.

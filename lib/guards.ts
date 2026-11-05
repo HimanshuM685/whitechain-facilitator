@@ -9,13 +9,12 @@
  * Two distinct kinds of refusal, kept separate on purpose:
  *   - `reject`  a protocol-level verdict ("this payment is not acceptable").
  *               Returned as a normal x402 VerifyResponse/SettleResponse.
- *   - `http`    an operational refusal (rate limited, out of budget, degraded).
+ *   - `http`    an operational refusal (rate limited, signer empty, degraded).
  *               Returned as 429/503 so callers can back off and retry later.
  */
 
 import { parseEther } from "viem";
 import { facilitatorAccount, publicClientFor } from "./chain";
-import { gasSpentTodayWei } from "./db";
 import { findAsset, NETWORKS, type AssetDef, type NetworkKey } from "./networks";
 
 const num = (name: string, fallback: number): number => {
@@ -36,14 +35,6 @@ export const config = {
     payTo: num("RATE_LIMIT_PAYTO_PER_MIN", 120),
     global: num("RATE_LIMIT_GLOBAL_PER_MIN", 1200),
   },
-  gasBudgetDailyWei: {
-    testnet: wbt("GAS_BUDGET_DAILY_WBT_TESTNET", "1"),
-    mainnet: wbt("GAS_BUDGET_DAILY_WBT_MAINNET", "0.5"),
-  } satisfies Record<NetworkKey, bigint>,
-  gasBudgetPerPayToDailyWei: {
-    testnet: wbt("GAS_BUDGET_PER_PAYTO_DAILY_WBT_TESTNET", "0.1"),
-    mainnet: wbt("GAS_BUDGET_PER_PAYTO_DAILY_WBT_MAINNET", "0.05"),
-  } satisfies Record<NetworkKey, bigint>,
   minSignerBalanceWei: wbt("MIN_SIGNER_BALANCE_WBT", "0.05"),
 } as const;
 
@@ -209,27 +200,18 @@ export async function preflight(input: PreflightInput): Promise<PreflightResult>
     };
   }
 
-  // Fail closed and say why. If the budget cannot be read — no migration run,
-  // database unreachable — we must not settle, because an unchecked budget is an
-  // uncapped spend. An opaque 500 would fail closed too, but reads as an outage
-  // rather than the configuration problem it almost always is.
+  // One RPC read so an empty wallet is a clear 503 rather than a failed broadcast.
+  // No gas budget: settlement is capped only by what the signer holds.
   let balance: bigint;
-  let spentToday: bigint;
-  let spentTodayForMerchant: bigint;
   try {
-    [balance, spentToday, spentTodayForMerchant] = await Promise.all([
-      publicClientFor(input.net).getBalance({ address: facilitatorAccount().address }),
-      gasSpentTodayWei(input.net),
-      gasSpentTodayWei(input.net, input.payTo),
-    ]);
+    balance = await publicClientFor(input.net).getBalance({ address: facilitatorAccount().address });
   } catch (error) {
-    console.error(`[preflight] budget check failed on ${input.net}:`, (error as Error).message);
+    console.error(`[preflight] signer balance unreadable on ${input.net}:`, (error as Error).message);
     return {
       kind: "http",
       status: 503,
-      reason: "budget_unavailable",
-      message:
-        "The gas budget could not be read, so settlement is refused. Nothing was broadcast. See /health.",
+      reason: "signer_unavailable",
+      message: "The facilitator's signer or RPC is unavailable, so settlement is refused. Nothing was broadcast. See /health.",
     };
   }
 
@@ -242,31 +224,5 @@ export async function preflight(input: PreflightInput): Promise<PreflightResult>
     };
   }
 
-  if (spentToday >= config.gasBudgetDailyWei[input.net]) {
-    return {
-      kind: "http",
-      status: 503,
-      reason: "daily_gas_budget_exhausted",
-      message: `The daily gas budget for ${net.name} is spent. It resets at 00:00 UTC.`,
-      retryAfter: secondsUntilUtcMidnight(),
-    };
-  }
-
-  if (spentTodayForMerchant >= config.gasBudgetPerPayToDailyWei[input.net]) {
-    return {
-      kind: "http",
-      status: 503,
-      reason: "merchant_gas_budget_exhausted",
-      message: `This payTo address has used its daily gas allowance on ${net.name}. It resets at 00:00 UTC.`,
-      retryAfter: secondsUntilUtcMidnight(),
-    };
-  }
-
   return { kind: "ok", asset };
-}
-
-function secondsUntilUtcMidnight(): number {
-  const now = new Date();
-  const midnight = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
-  return Math.ceil((midnight - now.getTime()) / 1000);
 }

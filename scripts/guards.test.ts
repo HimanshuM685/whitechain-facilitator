@@ -2,7 +2,7 @@
  * Checks on the refusal logic — the code that decides whether we spend money.
  *
  * Runs without a database or RPC: every case here is decided before `preflight`
- * reaches the budget reads, which is itself part of what is being asserted
+ * reaches the signer balance read, which is itself part of what is being asserted
  * (cheap checks first, so a rejected request costs nothing).
  *
  *   pnpm test
@@ -136,15 +136,14 @@ await check("rate limits are per IP, not global", async () => {
   assert.equal(result.kind, "ok");
 });
 
-// No DATABASE_URL is set in this test run, so the budget read fails. A settle
-// must refuse rather than proceed with an unchecked budget — an unchecked budget
-// is an uncapped spend.
-await check("settle fails closed when the budget cannot be read", async () => {
+// No FACILITATOR_PRIVATE_KEY in this run, so the signer cannot be read. Settle
+// must refuse with a clear 503 rather than throw.
+await check("settle refuses when the signer is unavailable", async () => {
   resetRateLimits();
   const result = await preflight({ ...base, phase: "settle", ip: "198.51.100.20" });
   assert.equal(result.kind, "http");
   assert.equal(result.kind === "http" && result.status, 503);
-  assert.equal(result.kind === "http" && result.reason, "budget_unavailable");
+  assert.equal(result.kind === "http" && result.reason, "signer_unavailable");
 });
 
 await check("client IP comes from the proxy headers", () => {

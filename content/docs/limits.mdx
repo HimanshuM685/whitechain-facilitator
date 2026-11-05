@@ -1,4 +1,4 @@
-This is a free public service that pays gas out of its own wallet, so it has to have limits. They exist to stop one caller draining the budget everyone shares — not to meter you.
+This is a free public service that pays gas out of its own wallet, so it has to have limits. They exist to stop one caller draining the gas wallet everyone shares — not to meter you.
 
 Nothing is ever broadcast when a limit refuses a request, so a `429` or `503` costs you nothing but a retry.
 
@@ -23,28 +23,12 @@ Below that, the WBT we spend on gas exceeds the value being transferred, which m
 
 There is no maximum. The amount is in the payer's signature, so it is bounded by what they chose to sign.
 
-## Daily gas budgets
+## Gas
 
-Reset at 00:00 UTC, counted from settlements actually confirmed.
-
-| Scope | Testnet | Mainnet |
-| --- | --- | --- |
-| Network total | 1 WBT/day | 0.5 WBT/day |
-| Per merchant (`payTo`) | 0.1 WBT/day | 0.05 WBT/day |
-
-A settlement costs roughly 0.0005 WBT, so the testnet budget is on the order of a couple of thousand payments a day. Mainnet is deliberately tighter.
-
-Exhaustion is a `503`:
-
-- `daily_gas_budget_exhausted` — the whole network's budget for today is gone
-- `merchant_gas_budget_exhausted` — your `payTo` used its share; other merchants are unaffected
-
-Both carry `Retry-After` set to the seconds remaining until the UTC reset.
-
-Check where things stand before you need to:
+There is no daily gas budget. Settlement is limited only by the facilitator's WBT balance; below the operating floor `/settle` returns `503 signer_balance_low`. Check it:
 
 <NetCode lang="bash">
-{`curl -s {{facilitatorUrl}}/health | jq '.networks[] | {network, status, budget, estimatedSettlesLeft}'`}
+{`curl -s {{facilitatorUrl}}/health | jq '.networks[] | {network, status, balanceWbt, estimatedSettlesLeft}'`}
 </NetCode>
 
 ## Per-settlement gas cap
@@ -68,8 +52,8 @@ If our signer's WBT drops below the operating floor, `/settle` returns `503` wit
 ## What is not limited
 
 - `/supported`, `/assets`, `/health` and the log endpoints are not rate limited beyond the per-IP ceiling.
-- `/verify` is included in the counts, but it spends no gas and no budget — call it as much as the rate limit allows.
+- `/verify` is included in the counts, but it spends no gas — call it as much as the rate limit allows.
 
 ## If the limits do not fit
 
-They are all environment variables on a service you can run yourself. [Self-host](/docs/self-host): same code, your signer, your budget. Your merchant config changes by exactly one URL.
+They are all environment variables on a service you can run yourself. [Self-host](/docs/self-host): same code, your signer. Your merchant config changes by exactly one URL.
