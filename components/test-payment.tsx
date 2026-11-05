@@ -6,7 +6,7 @@
  * straight to this facilitator's /verify and /settle.
  *
  * The wallet only signs typed data — it never sends a transaction, so the
- * payer needs the stablecoin and zero WBT.
+ * payer needs USDT and zero WBT.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -43,7 +43,7 @@ const button =
   "rounded-lg border border-ink-line bg-ink-raised px-3 py-2 text-xs text-chalk hover:border-accent disabled:cursor-not-allowed disabled:opacity-40";
 
 export function TestPayment() {
-  const { key, net, isMainnet } = useNetwork();
+  const { key, net } = useNetwork();
   const chain = chainFor(key);
   const publicClient = useMemo(() => createPublicClient({ chain, transport: http(net.rpc) }), [chain, net.rpc]);
 
@@ -137,8 +137,14 @@ export function TestPayment() {
         address: account,
         signTypedData: (message: Parameters<typeof wallet.signTypedData>[0]) => wallet.signTypedData(message),
       };
-      const payment = await new x402Client()
-        .register(net.caip2, new ExactEvmScheme(signer as never))
+      // spendControls off: the client's built-in allowlist only knows Circle
+      // tokens on major chains, so it rejects Whitechain USDT. The facilitator's
+      // own registry (lib/networks.ts) is the allowlist that matters here.
+      const payment = await x402Client
+        .fromConfig({
+          schemes: [{ network: net.caip2, client: new ExactEvmScheme(signer as never) }],
+          spendControls: false,
+        })
         .createPaymentPayload(paymentRequired);
 
       setPayload({ payment, requirements });
@@ -202,19 +208,21 @@ export function TestPayment() {
         </label>
 
         <div className="flex flex-wrap gap-2 pt-2">
-          <button className={button} onClick={sign} disabled={!account || busy !== null}>
+          <button className={button} onClick={sign} disabled={!account || !asset || busy !== null}>
             {busy === "sign" ? "Signing…" : "Sign authorization"}
           </button>
           <button className={button} onClick={() => post("/verify")} disabled={!payload || busy !== null}>
             {busy === "/verify" ? "Verifying…" : "Verify"}
           </button>
           <button className={button} onClick={() => post("/settle")} disabled={!payload || busy !== null}>
-            {busy === "/settle" ? "Settling…" : isMainnet ? "Settle (real funds)" : "Settle"}
+            {busy === "/settle" ? "Settling…" : "Settle"}
           </button>
         </div>
 
-        {isMainnet && (
-          <p className="text-xs text-mainnet">Mainnet: settling moves real {asset?.symbol} to the pay-to address.</p>
+        {!asset && (
+          <p className="text-xs text-danger">
+            No gasless USDT on {net.name}: its USDT contract has no EIP-3009. Switch to testnet.
+          </p>
         )}
         {balances && balances.wbt > 0n && (
           <p className="text-xs text-testnet">

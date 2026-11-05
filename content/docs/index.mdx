@@ -1,10 +1,10 @@
 This is an [x402](https://docs.x402.org) v2 facilitator for [Whitechain](https://docs.whitechain.io). It lets your HTTP endpoint charge per request, and it pays the gas so your customer does not have to.
 
-Concretely: a payer who holds nothing but a stablecoin can pay your API. No WBT, no faucet, no "approve first" step, no wallet popup — just a signature their wallet or agent produces offline.
+Concretely: a payer who holds nothing but USDT can pay your API. No WBT, no faucet, no "approve first" step, no wallet popup — just a signature their wallet or agent produces offline.
 
 ## The one-paragraph version
 
-Your endpoint answers an unpaid request with `402 Payment Required` and the terms. The payer signs an EIP-3009 `TransferWithAuthorization` — a message, not a transaction, so it costs nothing and needs no gas token. Your server hands that signature to this facilitator, which checks it and then submits `transferWithAuthorization` on-chain, paying the WBT fee from our own wallet. The stablecoin moves **directly from payer to you**. We never hold it.
+Your endpoint answers an unpaid request with `402 Payment Required` and the terms. The payer signs an EIP-3009 `TransferWithAuthorization` — a message, not a transaction, so it costs nothing and needs no gas token. Your server hands that signature to this facilitator, which checks it and then submits `transferWithAuthorization` on-chain, paying the WBT fee from our own wallet. The USDT moves **directly from payer to you**. We never hold it.
 
 ## What you get
 

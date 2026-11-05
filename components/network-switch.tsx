@@ -48,7 +48,7 @@ export function MainnetBanner() {
 
   return (
     <div className="border-b border-mainnet/25 bg-mainnet/10 px-4 py-2 text-center text-xs text-mainnet">
-      Mainnet selected — addresses and snippets below move real USDC.e on Whitechain (chain 1875).
+      Mainnet selected — USDT is not gasless on Whitechain mainnet (no EIP-3009), so nothing settles here.
     </div>
   );
 }

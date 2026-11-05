@@ -4,7 +4,7 @@ Whitechain has a mainnet and a Sepolia testnet. Both are EVM-compatible OP Stack
 
 **Sepolia (chain 1874)** — anything that is not production. Tokens have no value, the faucet is free, and our daily gas budget is generous. Build here.
 
-**Mainnet (chain 1875)** — real USDC.e, real money, real consequences. Our mainnet gas budget is deliberately small, and mainnet settlement can be switched off entirely for operational reasons. Check [/health](/health) before you depend on it.
+**Mainnet (chain 1875)** — not usable for payments today. USDT is the only token we serve, and mainnet USDT has no EIP-3009, so there is nothing to settle gaslessly. See [supported assets](/docs/supported-assets).
 
 ## The toggle
 
@@ -29,17 +29,16 @@ Right now you are reading the <NetVal k="networkName" mono={false} /> docs.
     <NetField label="Explorer" k="explorer" />
     <NetField label="Bridge" k="bridge" />
     <NetField label="Faucet" k="faucet" />
-    <NetField label="USDC.e" k="usdc" />
     <NetField label="USDT" k="usdt" />
   </div>
 </div>
 
 <OnlyOn network="testnet">
-On Sepolia you can pay with either **USDC.e** or **USDT** — both support EIP-3009 natively.
+On Sepolia you pay with **USDT**, which supports EIP-3009 natively.
 </OnlyOn>
 
 <OnlyOn network="mainnet">
-On mainnet only **USDC.e** is supported. Mainnet USDT is an older Tether contract with no
+No asset is supported on mainnet. Mainnet USDT is an older Tether contract with no
 `transferWithAuthorization`, so it cannot be paid gaslessly at all — see
 [supported assets](/docs/supported-assets) for the details and the on-chain evidence.
 </OnlyOn>

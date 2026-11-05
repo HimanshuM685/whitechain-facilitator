@@ -3,6 +3,8 @@
  * will sponsor gas for. Everything else — viem clients, guards, docs components,
  * the DB table names, the /assets endpoint — reads from here.
  *
+ * USDT is the only stablecoin served. Gas is always paid in WBT by our signer.
+ *
  * Only EIP-3009 assets belong in `assets`. The facilitator settles exclusively via
  * `transferWithAuthorization`, so a token without it simply cannot be paid gaslessly.
  * See `scripts/verify-assets.ts`, which proves every entry below against the chain.
@@ -61,14 +63,6 @@ export const NETWORKS: Record<NetworkKey, NetworkDef> = {
     table: "payments_testnet",
     assets: [
       {
-        symbol: "USDC.e",
-        label: "Bridged USDC (Whitechain)",
-        address: "0x5Eb541ba8A2DD841aF7864c3389162a23ddA8401",
-        decimals: 6,
-        domain: { name: "Bridged USDC (Whitechain)", version: "2" },
-        domainSeparator: "0x02c4779645b8009345e4ea4f18fd564ecab398b3581e107aca67a4be3f87f009",
-      },
-      {
         symbol: "USDT",
         label: "Tether USD",
         address: "0xcedfB56113143d55b2358b8CFbB0dEB5Ad2f55a7",
@@ -92,16 +86,8 @@ export const NETWORKS: Record<NetworkKey, NetworkDef> = {
     faucet: null,
     table: "payments_mainnet",
     assets: [
-      {
-        symbol: "USDC.e",
-        label: "Bridged USDC (Whitechain)",
-        address: "0xF97B9Bf62916f1EB42Dd906a7254603e7b9FC4a7",
-        decimals: 6,
-        domain: { name: "Bridged USDC (Whitechain)", version: "2" },
-        domainSeparator: "0xfca7013f84dc83e932f37000898b9056161291e6a3247557ddc0974ac7dfa70b",
-      },
-      // Mainnet USDT (0xF95604a4034d8407d3F1256De56C9ae37F299cb8) is deliberately
-      // absent: it is TetherToken V1, which has `permit` but no
+      // Empty on purpose. Mainnet USDT (0xF95604a4034d8407d3F1256De56C9ae37F299cb8)
+      // is the only candidate, and it cannot be listed: it is TetherToken V1, which has `permit` but no
       // `transferWithAuthorization`, so a gasless x402 `exact` payment is
       // impossible. Its total supply is also 0. See docs/supported-assets.
     ],

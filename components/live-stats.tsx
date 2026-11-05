@@ -50,7 +50,7 @@ export function LiveStats() {
 
   const cells: { label: string; value: string }[] = [
     { label: "Payments settled", value: stats ? stats.settled.toLocaleString() : "—" },
-    { label: `Volume (${net.assets[0]?.symbol ?? "USDC.e"})`, value: stats ? trim(stats.volume, 2) : "—" },
+    { label: `Volume (${"USDT"})`, value: stats ? trim(stats.volume, 2) : "—" },
     { label: "WBT gas sponsored", value: stats ? trim(stats.gasSponsoredWbt, 5) : "—" },
     { label: "Unique payers", value: stats ? stats.uniquePayers.toLocaleString() : "—" },
   ];

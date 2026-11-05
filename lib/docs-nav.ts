@@ -39,17 +39,17 @@ export const DOCS: DocSection[] = [
       {
         slug: "quickstart-agent",
         title: "Pay for an endpoint",
-        summary: "An agent that pays with stablecoins and no gas token.",
+        summary: "An agent that pays with USDT and no gas token.",
       },
       {
         slug: "quickstart-testnet",
         title: "Testnet setup",
-        summary: "Get test USDC.e, understand the faucet, run the whole loop.",
+        summary: "Get test USDT, understand the faucet, run the whole loop.",
       },
       {
         slug: "quickstart-mainnet",
         title: "Mainnet setup",
-        summary: "Real USDC.e, bridging, and the pre-launch checklist.",
+        summary: "Why mainnet has no servable asset yet.",
       },
     ],
   },

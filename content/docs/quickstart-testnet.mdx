@@ -4,7 +4,7 @@ Whitechain Sepolia is chain `1874`. Tokens on it have no value. This is where yo
 
 | | Needed? | Why |
 | --- | --- | --- |
-| Test USDC.e or USDT | **Yes, for the payer** | It is what gets transferred. |
+| Test USDT | **Yes, for the payer** | It is what gets transferred. |
 | Test WBT for the payer | **No** | That is the entire point. Leave it at zero. |
 | Test WBT for you, the developer | Only to deploy contracts | Paying for an API needs none. |
 
@@ -18,7 +18,6 @@ Whitechain Sepolia is chain `1874`. Tokens on it have no value. This is where yo
     <NetField label="Explorer" k="explorer" />
     <NetField label="Faucet" k="faucet" />
     <NetField label="Bridge" k="bridge" />
-    <NetField label="USDC.e" k="usdc" />
     <NetField label="USDT" k="usdt" />
   </div>
 </div>
@@ -42,18 +41,17 @@ export const whitechainSepolia = defineChain({
 
 The [faucet]({{faucet}}) hands out test WBT. You need it to deploy a contract or send an ordinary transaction. You do **not** need it to pay for an x402 endpoint — if you find yourself topping up the payer's WBT to make a payment work, something is wrong with the setup, not the balance.
 
-## 3. Get test stablecoins
+## 3. Get test USDT
 
-Both allowlisted Sepolia assets support EIP-3009 natively, so either works:
+USDT is the only token served. Sepolia USDT supports EIP-3009 natively:
 
-- **USDC.e** — <NetVal k="usdc" />
 - **USDT** — <NetVal k="usdt" />
 
 Bridge test tokens with the [testnet bridge]({{bridge}}), or ask in the Whitechain developer channels. Check what landed:
 
 <NetCode lang="bash">
-{`cast call {{usdc}} "balanceOf(address)(uint256)" $AGENT --rpc-url {{rpc}}
-cast call {{usdc}} "decimals()(uint8)" --rpc-url {{rpc}}   # 6`}
+{`cast call {{usdt}} "balanceOf(address)(uint256)" $AGENT --rpc-url {{rpc}}
+cast call {{usdt}} "decimals()(uint8)" --rpc-url {{rpc}}   # 6`}
 </NetCode>
 
 ## 4. Confirm the token really is EIP-3009
@@ -63,7 +61,7 @@ Worth doing once for any token you plan to accept, because a token without it ca
 <NetCode lang="bash">
 {`# Must return the canonical typehash:
 # 0x7c7c6cdb67a18743f49ec6fa9b35f50d52ed05cbed4cc592e13b44501c1a2267
-cast call {{usdc}} "TRANSFER_WITH_AUTHORIZATION_TYPEHASH()(bytes32)" --rpc-url {{rpc}}`}
+cast call {{usdt}} "TRANSFER_WITH_AUTHORIZATION_TYPEHASH()(bytes32)" --rpc-url {{rpc}}`}
 </NetCode>
 
 If that call reverts, the token has no EIP-3009 support. (This is exactly how mainnet USDT was ruled out — see [supported assets](/docs/supported-assets).)
@@ -85,7 +83,7 @@ npx tsx agent.ts`}
 
 Then prove it to yourself on the explorer. Open the settlement hash and check two things:
 
-1. The USDC.e `Transfer` event goes **payer → merchant**. Not through us.
+1. The USDT `Transfer` event goes **payer → merchant**. Not through us.
 2. The transaction's `from` is **our facilitator signer**, and the fee came out of our balance.
 
 That single screen is the whole idea.

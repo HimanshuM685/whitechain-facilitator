@@ -22,8 +22,9 @@ const { preflight, resetRateLimits, clientIp } = await import("../lib/guards");
 const { NETWORKS, findAsset } = await import("../lib/networks");
 const { safeErrorMessage } = await import("../lib/redact");
 
-const USDC_TESTNET = NETWORKS.testnet.assets.find((a) => a.symbol === "USDC.e")!;
-const USDC_MAINNET = NETWORKS.mainnet.assets.find((a) => a.symbol === "USDC.e")!;
+const USDT_TESTNET = NETWORKS.testnet.assets.find((a) => a.symbol === "USDT")!;
+// Mainnet USDT exists on-chain but has no EIP-3009, so it is not allowlisted.
+const USDT_MAINNET_ADDRESS = "0xF95604a4034d8407d3F1256De56C9ae37F299cb8";
 const MERCHANT = "0x1111111111111111111111111111111111111111";
 
 const base = {
@@ -32,7 +33,7 @@ const base = {
   ip: "203.0.113.1",
   scheme: "exact",
   network: NETWORKS.testnet.caip2,
-  asset: USDC_TESTNET.address,
+  asset: USDT_TESTNET.address,
   amount: "10000",
   payTo: MERCHANT,
 };
@@ -49,11 +50,11 @@ resetRateLimits();
 await check("a well-formed testnet payment passes", async () => {
   const result = await preflight({ ...base, ip: "198.51.100.1" });
   assert.equal(result.kind, "ok");
-  assert.equal(result.kind === "ok" && result.asset.symbol, "USDC.e");
+  assert.equal(result.kind === "ok" && result.asset.symbol, "USDT");
 });
 
 await check("mixed-case asset addresses still match", async () => {
-  const result = await preflight({ ...base, ip: "198.51.100.2", asset: USDC_TESTNET.address.toUpperCase() });
+  const result = await preflight({ ...base, ip: "198.51.100.2", asset: USDT_TESTNET.address.toUpperCase() });
   assert.equal(result.kind, "ok");
 });
 
@@ -67,15 +68,25 @@ await check("an unknown asset is rejected", async () => {
   assert.equal(result.kind === "reject" && result.reason, "unsupported_asset");
 });
 
-// The cross-network case is the interesting one: both addresses are allowlisted
-// somewhere, so this only fails if the lookup is scoped per network.
-await check("a mainnet asset presented as a testnet payment is rejected", async () => {
-  const result = await preflight({ ...base, ip: "198.51.100.4", asset: USDC_MAINNET.address });
-  assert.equal(result.kind, "reject");
-  assert.equal(result.kind === "reject" && result.reason, "unsupported_asset");
-  // Sanity: it really is allowlisted on its own network.
-  assert.ok(findAsset("mainnet", USDC_MAINNET.address));
-  assert.equal(findAsset("testnet", USDC_MAINNET.address), undefined);
+await check("USDT is the only stablecoin served", () => {
+  assert.deepEqual(NETWORKS.testnet.assets.map((a) => a.symbol), ["USDT"]);
+  assert.deepEqual(NETWORKS.mainnet.assets, []);
+});
+
+// Lookup is scoped per network: testnet USDT presented as a mainnet payment
+// must not match, and mainnet USDT (no EIP-3009) must not match either.
+await check("mainnet rejects every USDT address", async () => {
+  for (const [i, asset] of [USDT_TESTNET.address, USDT_MAINNET_ADDRESS].entries()) {
+    const result = await preflight({
+      ...base,
+      net: "mainnet",
+      ip: `198.51.100.4${i}`,
+      network: NETWORKS.mainnet.caip2,
+      asset,
+    });
+    assert.equal(result.kind === "reject" && result.reason, "unsupported_asset");
+  }
+  assert.equal(findAsset("mainnet", USDT_TESTNET.address), undefined);
 });
 
 await check("a mismatched network identifier is rejected", async () => {
@@ -125,23 +136,6 @@ await check("rate limits are per IP, not global", async () => {
   assert.equal(result.kind, "ok");
 });
 
-await check("mainnet settle is refused while the kill switch is off", async () => {
-  resetRateLimits();
-  const result = await preflight({
-    ...base,
-    net: "mainnet",
-    phase: "settle",
-    ip: "198.51.100.12",
-    network: NETWORKS.mainnet.caip2,
-    asset: USDC_MAINNET.address,
-  });
-  assert.equal(result.kind, "http");
-  assert.equal(result.kind === "http" && result.status, 503);
-  assert.equal(result.kind === "http" && result.reason, "mainnet_disabled");
-});
-
-// Verification spends nothing, so it must stay available even when settlement
-// is switched off — otherwise an integration cannot be validated at all.
 // No DATABASE_URL is set in this test run, so the budget read fails. A settle
 // must refuse rather than proceed with an unchecked budget — an unchecked budget
 // is an uncapped spend.
@@ -151,18 +145,6 @@ await check("settle fails closed when the budget cannot be read", async () => {
   assert.equal(result.kind, "http");
   assert.equal(result.kind === "http" && result.status, 503);
   assert.equal(result.kind === "http" && result.reason, "budget_unavailable");
-});
-
-await check("mainnet verify still works while settle is disabled", async () => {
-  const result = await preflight({
-    ...base,
-    net: "mainnet",
-    phase: "verify",
-    ip: "198.51.100.13",
-    network: NETWORKS.mainnet.caip2,
-    asset: USDC_MAINNET.address,
-  });
-  assert.equal(result.kind, "ok");
 });
 
 await check("client IP comes from the proxy headers", () => {

@@ -1,4 +1,4 @@
-You have an endpoint. You want it to cost 0.01 USDC.e per call, settled on Whitechain, with the payer needing no gas token. This takes one middleware and one config object.
+You have an endpoint. You want it to cost 0.01 USDT per call, settled on Whitechain, with the payer needing no gas token. This takes one middleware and one config object.
 
 You are reading the <NetVal k="networkName" mono={false} /> version of this page — the snippets below already carry that network's addresses.
 
@@ -135,28 +135,6 @@ app.use(
   ),
 );`}
 </NetCode>
-
-## Accepting more than one token
-
-`accepts` takes an array, and the payer picks whichever they hold. <OnlyOn network="testnet">On Sepolia that means USDC.e or USDT:</OnlyOn><OnlyOn network="mainnet">On mainnet only USDC.e qualifies, but the same shape lets you offer both networks at once:</OnlyOn>
-
-<NetCode lang="ts">
-{`accepts: [
-  {
-    scheme: "exact",
-    network: "{{caip2}}",
-    payTo: "0xYourMerchantAddress",
-    price: {
-      asset: "{{usdc}}",
-      amount: "10000",
-      extra: { name: "Bridged USDC (Whitechain)", version: "2" },
-    },
-  },
-  // Add a second entry per additional token or network you accept.
-]`}
-</NetCode>
-
-One 402 response can then be satisfied by a testnet agent or a mainnet agent, with whichever token each of them holds.
 
 ## Verify it works
 

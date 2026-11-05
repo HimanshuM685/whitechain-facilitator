@@ -2,9 +2,9 @@
 
 An [x402](https://docs.x402.org) v2 facilitator for [Whitechain](https://docs.whitechain.io), plus a documentation site and a public log of every payment it handles.
 
-It lets an HTTP endpoint charge per request, and it pays the gas so the customer does not have to. A payer holding nothing but a stablecoin — **zero WBT** — can pay your API.
+It lets an HTTP endpoint charge per request, and it pays the gas so the customer does not have to. A payer holding nothing but **USDT** — **zero WBT** — can pay your API. USDT is the only token served; WBT is only ever the gas token, paid by us.
 
-Serves **both** Whitechain mainnet (`eip155:1875`) and Sepolia (`eip155:1874`) from one URL.
+Serves Whitechain Sepolia (`eip155:1874`). Mainnet (`eip155:1875`) is wired up but has no servable asset: mainnet USDT has no EIP-3009 (see below).
 
 ## How it works
 
@@ -27,13 +27,13 @@ pnpm dev
 Run `verify-assets` first. It checks every allowlisted token's EIP-3009 typehash, decimals, and EIP-712 domain against the token's own `DOMAIN_SEPARATOR()`. It exits non-zero on a mismatch and prints the correct values. Nothing downstream is trustworthy until it passes.
 
 ```
-Whitechain Sepolia  USDC.e  0x5Eb541ba8A2DD841aF7864c3389162a23ddA8401
+Whitechain Sepolia  USDT  0xcedfB56113143d55b2358b8CFbB0dEB5Ad2f55a7
   decimals        ok
   eip-3009        ok (canonical typehash)
-  separator       0x02c4779645b8009345e4ea4f18fd564ecab398b3581e107aca67a4be3f87f009
-  domain          ok  { name: "Bridged USDC (Whitechain)", version: "2" }
+  separator       0xcdcfacb6b15c8238b4e5fbb47bdb83b7f83f50a531d264bf9763d2bd1d3d2a25
+  domain          ok  { name: "Tether USD", version: "1" }
 
-3/3 assets verified.
+1/1 assets verified.
 ```
 
 ## Endpoints
@@ -62,9 +62,9 @@ app.use(paymentMiddleware({
       network: "eip155:1874",
       payTo: "0xYourMerchantAddress",
       price: {
-        asset: "0x5Eb541ba8A2DD841aF7864c3389162a23ddA8401",   // USDC.e
+        asset: "0xcedfB56113143d55b2358b8CFbB0dEB5Ad2f55a7",   // USDT (Sepolia)
         amount: "10000",                                        // 0.01, six decimals
-        extra: { name: "Bridged USDC (Whitechain)", version: "2" },
+        extra: { name: "Tether USD", version: "1" },
       },
     },
   },
@@ -79,11 +79,9 @@ Settlement is via EIP-3009 `transferWithAuthorization`, so support is a property
 
 | Token | Network | Address | EIP-3009 | `extra` |
 | --- | --- | --- | --- | --- |
-| USDC.e | Sepolia | `0x5Eb541ba8A2DD841aF7864c3389162a23ddA8401` | yes | `{ name: "Bridged USDC (Whitechain)", version: "2" }` |
 | USDT | Sepolia | `0xcedfB56113143d55b2358b8CFbB0dEB5Ad2f55a7` | yes | `{ name: "Tether USD", version: "1" }` |
-| USDC.e | mainnet | `0xF97B9Bf62916f1EB42Dd906a7254603e7b9FC4a7` | yes | `{ name: "Bridged USDC (Whitechain)", version: "2" }` |
 
-Note the two different domain versions. There is no safe default.
+USDT is the only stablecoin this facilitator sponsors. Mainnet has no entry, for the reason below.
 
 ### The USDT situation
 
@@ -113,7 +111,7 @@ cast call 0xF95604a4034d8407d3F1256De56C9ae37F299cb8 \
 | Faucet | — | `https://faucet.testnet.whitechain.io` |
 | Gas | WBT, 18 dec, 5 gwei min base fee, ~1s blocks | same |
 
-Both are OP Stack L2s settling to Ethereum. Permit2 (`0x0000…78BA3`) and Multicall3 are deployed on both; `x402ExactPermit2Proxy` (`0x402085c2…0001`) is on Sepolia only. We do not use the Permit2 path — every allowlisted asset is natively EIP-3009 — but the deterministic CREATE2 deployer is present on mainnet if someone needs the proxies there.
+Both are OP Stack L2s settling to Ethereum. Permit2 (`0x0000…78BA3`) and Multicall3 are deployed on both; `x402ExactPermit2Proxy` (`0x402085c2…0001`) is on Sepolia only. We do not use the Permit2 path — Sepolia USDT is natively EIP-3009 — but the deterministic CREATE2 deployer is present on mainnet if someone needs the proxies there.
 
 ## Architecture
 

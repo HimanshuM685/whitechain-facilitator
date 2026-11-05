@@ -43,7 +43,7 @@ export default function HomePage() {
           <p className="mt-5 max-w-2xl text-lg text-chalk-dim">
             A gas-sponsoring facilitator for the x402 payment protocol, live on Whitechain mainnet and
             Sepolia. Point any <code className="font-mono text-base text-chalk">@x402/*</code> middleware at
-            this URL and an agent holding only stablecoins can pay your API. Every settlement is logged in
+            this URL and an agent holding only USDT can pay your API. Every settlement is logged in
             public.
           </p>
 
@@ -124,7 +124,6 @@ app.use(
             <NetField label="CAIP-2" k="caip2" />
             <NetField label="RPC" k="rpc" />
             <NetField label="Explorer" k="explorer" />
-            <NetField label="USDC.e" k="usdc" />
             <NetField label="USDT" k="usdt" />
             <NetField label="Faucet" k="faucet" />
           </div>

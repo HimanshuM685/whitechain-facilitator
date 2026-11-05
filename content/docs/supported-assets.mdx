@@ -4,11 +4,11 @@ On top of that, assets are **allowlisted** rather than auto-detected. A relayer 
 
 ## The list
 
+**USDT is the only stablecoin served.** Gas is always WBT, paid by our signer.
+
 | Token | Network | Address | EIP-3009 | Decimals |
 | --- | --- | --- | --- | --- |
-| **USDC.e** | Sepolia | `0x5Eb541ba8A2DD841aF7864c3389162a23ddA8401` | yes | 6 |
 | **USDT** | Sepolia | `0xcedfB56113143d55b2358b8CFbB0dEB5Ad2f55a7` | yes | 6 |
-| **USDC.e** | mainnet | `0xF97B9Bf62916f1EB42Dd906a7254603e7b9FC4a7` | yes | 6 |
 
 Fetch the same list, with verified EIP-712 domains, from [/assets](/assets).
 
@@ -18,20 +18,19 @@ This is the field that silently breaks integrations. The payer's wallet signs un
 
 | Token | `extra` |
 | --- | --- |
-| USDC.e (both networks) | `{ "name": "Bridged USDC (Whitechain)", "version": "2" }` |
 | USDT (Sepolia) | `{ "name": "Tether USD", "version": "1" }` |
 
 These are not guesses from `name()`. Each one is the pair that reproduces the token's own `DOMAIN_SEPARATOR()`, checked on every deploy by `pnpm verify-assets`:
 
 ```
-Whitechain Sepolia  USDC.e  0x5Eb541ba8A2DD841aF7864c3389162a23ddA8401
+Whitechain Sepolia  USDT  0xcedfB56113143d55b2358b8CFbB0dEB5Ad2f55a7
   decimals        ok
   eip-3009        ok (canonical typehash)
-  separator       0x02c4779645b8009345e4ea4f18fd564ecab398b3581e107aca67a4be3f87f009
-  domain          ok  { name: "Bridged USDC (Whitechain)", version: "2" }
+  separator       0xcdcfacb6b15c8238b4e5fbb47bdb83b7f83f50a531d264bf9763d2bd1d3d2a25
+  domain          ok  { name: "Tether USD", version: "1" }
 ```
 
-Note that USDC.e and USDT use **different** domain versions — `"2"` and `"1"`. There is no safe default here; you have to use the right one per token.
+Note the version is `"1"`, not `"2"` as on many Circle tokens. Use exactly these values.
 
 ## Why mainnet USDT is not supported
 
@@ -55,7 +54,7 @@ Its total supply is also `0`, so nobody holds it in any case.
 
 This catches people out because the two networks are not symmetric: **Sepolia USDT is `TetherTokenV2`, which does support EIP-3009.** If you read somewhere that "Whitechain USDT has no EIP-3009 so x402 payments must go through Permit2", that is true of the mainnet contract and false of the testnet one.
 
-Mainnet USDT could in principle be paid through Permit2 — but that needs an approval to the Permit2 contract first, which costs the payer gas, which defeats the purpose unless that approval is itself sponsored. We would rather support one asset properly than two badly.
+Mainnet USDT could in principle be paid through Permit2 — but that needs an approval to the Permit2 contract first, which costs the payer gas, which defeats the purpose unless that approval is itself sponsored. So mainnet currently serves no asset at all.
 
 ## Adding an asset
 

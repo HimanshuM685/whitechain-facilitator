@@ -13,9 +13,8 @@ import { useNetwork } from "./network-provider";
  */
 export function networkTokens(key: NetworkKey): Record<string, string> {
   const net = NETWORKS[key];
-  const usdc = net.assets.find((a) => a.symbol === "USDC.e");
   const usdt = net.assets.find((a) => a.symbol === "USDT");
-  const primary = usdc ?? net.assets[0]!;
+  const none = "not available on this network";
 
   return {
     network: key,
@@ -27,12 +26,11 @@ export function networkTokens(key: NetworkKey): Record<string, string> {
     explorer: net.explorer,
     bridge: net.bridge,
     faucet: net.faucet ?? "—",
-    asset: primary.address,
-    assetSymbol: primary.symbol,
-    assetDomainName: primary.domain.name,
-    assetDomainVersion: primary.domain.version,
-    usdc: usdc?.address ?? "—",
-    usdt: usdt?.address ?? "not available on this network",
+    asset: usdt?.address ?? none,
+    assetSymbol: "USDT",
+    assetDomainName: usdt?.domain.name ?? none,
+    assetDomainVersion: usdt?.domain.version ?? none,
+    usdt: usdt?.address ?? none,
     facilitatorUrl: process.env.NEXT_PUBLIC_FACILITATOR_URL ?? "https://your-facilitator.example",
   };
 }
@@ -41,7 +39,7 @@ function substitute(template: string, tokens: Record<string, string>): string {
   return template.replace(/\{\{(\w+)\}\}/g, (match, name: string) => tokens[name] ?? match);
 }
 
-/** Inline network-specific value, e.g. `<NetVal k="usdc" />`. */
+/** Inline network-specific value, e.g. `<NetVal k="usdt" />`. */
 export function NetVal({ k, mono = true }: { k: string; mono?: boolean }) {
   const { key } = useNetwork();
   const value = networkTokens(key)[k] ?? `{{${k}}}`;

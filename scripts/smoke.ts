@@ -45,7 +45,8 @@ assert.ok(payTo && isAddress(payTo), "SMOKE_PAY_TO must be a valid address you c
 
 const account = privateKeyToAccount(key as `0x${string}`);
 const client = publicClientFor(net);
-const asset = NETWORKS[net].assets[0]!;
+const asset = NETWORKS[net].assets.find((a) => a.symbol === "USDT");
+assert.ok(asset, `USDT is not served on ${NETWORKS[net].name}`);
 
 console.log(`network   ${NETWORKS[net].name} (${NETWORKS[net].caip2})`);
 console.log(`payer     ${account.address}`);
@@ -138,8 +139,9 @@ const paymentRequired: PaymentRequired = {
   accepts: [requirements],
 };
 
-const payload = await new x402Client()
-  .register(NETWORKS[net].caip2, new ExactEvmScheme(account))
+// spendControls off: the client's default allowlist does not know Whitechain USDT.
+const payload = await x402Client
+  .fromConfig({ schemes: [{ network: NETWORKS[net].caip2, client: new ExactEvmScheme(account) }], spendControls: false })
   .createPaymentPayload(paymentRequired);
 
 console.log("ok  signed TransferWithAuthorization (no transaction, no gas)");
