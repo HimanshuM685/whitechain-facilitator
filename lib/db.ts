@@ -131,8 +131,6 @@ export type LogQuery = {
   before?: string;
   payer?: string;
   payTo?: string;
-  /** When false, verify-only attempts are included too. */
-  settlesOnly?: boolean;
   /**
    * Match an address in either role. This is what the log page's single search
    * box wants — combining `payer` and `payTo` instead would require the same
@@ -144,7 +142,8 @@ export type LogQuery = {
 export async function listPayments(query: LogQuery): Promise<PaymentRow[]> {
   await ensureSchema();
   const table = tableFor(query.net);
-  const clauses: string[] = [];
+  // Settlements only. Older deployments also logged verify attempts; this hides them.
+  const clauses: string[] = [`kind = 'settle'`];
   const params: unknown[] = [];
 
   if (query.before) {
@@ -168,9 +167,6 @@ export async function listPayments(query: LogQuery): Promise<PaymentRow[]> {
   if (query.payTo) {
     params.push(query.payTo);
     clauses.push(`lower(pay_to) = lower($${params.length})`);
-  }
-  if (query.settlesOnly) {
-    clauses.push(`kind = 'settle'`);
   }
 
   params.push(Math.min(Math.max(query.limit, 1), 200));

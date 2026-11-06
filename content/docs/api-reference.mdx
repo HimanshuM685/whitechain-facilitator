@@ -163,7 +163,7 @@ A network's `status` can also be `disabled` — mainnet settlement switched off 
 Powers the [transaction log](/logs). `network` selects the table; the two never mix.
 
 <NetCode lang="bash">
-{`curl -s '{{facilitatorUrl}}/api/logs?network={{network}}&limit=20&settlesOnly=1' | jq '.rows[0]'`}
+{`curl -s '{{facilitatorUrl}}/api/logs?network={{network}}&limit=20' | jq '.rows[0]'`}
 </NetCode>
 
 | Parameter | Default | Notes |
@@ -174,7 +174,6 @@ Powers the [transaction log](/logs). `network` selects the table; the two never 
 | `address` | — | matches either role — payer **or** merchant. What the log page's search box uses. |
 | `payer` | — | exact address match, case-insensitive |
 | `payTo` | — | exact address match, case-insensitive |
-| `settlesOnly` | — | `1` to exclude verification-only attempts |
 
 ## GET /api/stats
 
@@ -203,8 +202,8 @@ Operational refusals use HTTP status codes, because they are about us rather tha
 | `400` | `bad_request` | Malformed body |
 | `400` | `unsupported_network` | Network not served; checked before dispatch |
 | `429` | `rate_limited` | Over a per-IP, per-payer or per-merchant limit. `Retry-After` is set. |
-| `503` | `mainnet_disabled` | Mainnet settlement off; `/verify` unaffected |
-| `503` | `signer_balance_low` | Our WBT is below the operating floor |
-| `503` | `signer_unavailable` | Signer key or RPC unavailable; nothing was broadcast |
+| `503` | `mainnet_disabled` | Mainnet settlement off; `/verify` unaffected. `Retry-After: 3600`. |
+| `503` | `signer_balance_low` | Our WBT is below the operating floor. `Retry-After: 300`. |
+| `503` | `signer_unavailable` | Signer key or RPC unavailable. `Retry-After: 30`. |
 
 Nothing is ever broadcast on a `429` or `503`, so these cost you nothing but a retry.

@@ -95,4 +95,4 @@ Per-payer and per-merchant limits are unaffected by any of this: those addresses
 
 The facilitator endpoints are plain route handlers in `app/(facilitator)/` — a route group, so they serve at the bare origin: `/verify`, `/settle`, `/supported`, `/assets`, `/health`.
 
-If you only want the API, delete `app/page.tsx`, `app/docs/`, `app/logs/`, `app/api/`, `components/`, `content/`, `mdx-components.tsx` and `app/globals.css`. Nothing in `app/(facilitator)/` or `lib/` depends on any of them.
+If you only want the API, delete `app/page.tsx`, `app/globals.css`, `app/docs`, `app/logs`, `app/test`, `app/api`, `components/`, `content/`, `mdx-components.tsx` and `lib/docs-nav.ts`, then reduce `app/layout.tsx` to a bare `<html><body>{children}</body></html>`. The x402 endpoints in `app/(facilitator)/` keep working unchanged.

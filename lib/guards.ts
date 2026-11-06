@@ -197,6 +197,7 @@ export async function preflight(input: PreflightInput): Promise<PreflightResult>
       status: 503,
       reason: "mainnet_disabled",
       message: "Mainnet settlement is currently disabled on this facilitator. Verification still works.",
+      retryAfter: 3600,
     };
   }
 
@@ -212,6 +213,7 @@ export async function preflight(input: PreflightInput): Promise<PreflightResult>
       status: 503,
       reason: "signer_unavailable",
       message: "The facilitator's signer or RPC is unavailable, so settlement is refused. Nothing was broadcast. See /health.",
+      retryAfter: 30,
     };
   }
 
@@ -221,6 +223,7 @@ export async function preflight(input: PreflightInput): Promise<PreflightResult>
       status: 503,
       reason: "signer_balance_low",
       message: `Facilitator WBT balance on ${net.name} is below the operating floor. Nothing was broadcast.`,
+      retryAfter: 300,
     };
   }
 

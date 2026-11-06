@@ -5,7 +5,9 @@ import { explorerTxUrl, isNetworkKey, NETWORKS } from "@/lib/networks";
 export const dynamic = "force-dynamic";
 
 /**
- * GET /api/logs?network=testnet&limit=50&payer=0x..&payTo=0x..&settlesOnly=1
+ * GET /api/logs?network=testnet&limit=50&payer=0x..&payTo=0x..
+ *
+ * Settlements only.
  *
  * Powers the public log page. Reads from the selected network's table only, so
  * the mainnet and testnet views never bleed into each other.
@@ -28,7 +30,6 @@ export async function GET(request: NextRequest) {
       address: params.get("address") ?? undefined,
       payer: params.get("payer") ?? undefined,
       payTo: params.get("payTo") ?? undefined,
-      settlesOnly: params.get("settlesOnly") === "1",
     });
 
     return NextResponse.json({

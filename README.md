@@ -1,58 +1,124 @@
 # whitechain-facilitator
 
-An [x402](https://docs.x402.org) v2 facilitator for [Whitechain](https://docs.whitechain.io), plus a documentation site and a public log of every payment it handles.
+**Let your API charge per request in USDT on Whitechain, without your customers ever needing gas.**
 
-It lets an HTTP endpoint charge per request, and it pays the gas so the customer does not have to. A payer holding nothing but **USDT** — **zero WBT** — can pay your API. USDT is the only token served; WBT is only ever the gas token, paid by us.
+This is an [x402](https://docs.x402.org) facilitator for [Whitechain](https://docs.whitechain.io). Your API asks for payment, the customer's wallet signs a message, and we put that payment on-chain and pay the gas (WBT) ourselves. The customer only needs USDT.
 
-Serves Whitechain Sepolia (`eip155:1874`). Mainnet (`eip155:1875`) is wired up but has no servable asset: mainnet USDT has no EIP-3009 (see below).
+It ships with a documentation site, a public log of every payment, and a browser test page at `/test`.
 
-## How it works
+| | |
+| --- | --- |
+| **Token** | USDT only. WBT is used only for gas, and we pay it. |
+| **Network** | Whitechain Sepolia (`eip155:1874`). Mainnet has no gasless USDT yet ([why](#why-not-mainnet)). |
+| **Integration** | The official `@x402/*` packages, unchanged. You only change the facilitator URL. |
+| **Custody** | None. Money goes straight from the payer to you. |
 
-Your endpoint answers an unpaid request with `402 Payment Required` and the terms. The payer signs an EIP-3009 `TransferWithAuthorization` — a message, not a transaction, so it costs nothing and needs no gas token. Your server hands that signature here; we verify it, simulate it, then submit `transferWithAuthorization` on-chain and pay the WBT fee ourselves.
+---
 
-The stablecoin moves **directly from payer to merchant**. This service never holds funds, and the signature fixes the recipient, the amount, a validity window and a single-use nonce — so the only discretion we have is whether to submit it.
+## Contents
 
-> There is no transaction batching involved. Gasless payments described as "grouping the payer's transaction with the facilitator's" are Algorand's atomic groups — a different model. On an EVM chain there is one transaction, sent by us, authorised by them.
+- [How a payment works](#how-a-payment-works)
+- [Architecture](#architecture)
+- [Accept payments (merchants)](#accept-payments-merchants)
+- [Pay for an API (agents and scripts)](#pay-for-an-api-agents-and-scripts)
+- [Run your own facilitator](#run-your-own-facilitator)
+- [API endpoints](#api-endpoints)
+- [Supported token](#supported-token)
+- [Safety limits](#safety-limits)
+- [Project layout](#project-layout)
+- [Testing](#testing)
 
-## Quick start
+---
+
+## How a payment works
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant P as Payer<br/>(wallet or agent)
+    participant M as Your API<br/>(x402 middleware)
+    participant F as This facilitator
+    participant C as Whitechain
+
+    P->>M: GET /api/report
+    M-->>P: 402 Payment Required<br/>PAYMENT-REQUIRED: price, token, payTo
+
+    Note over P: Signs a USDT transfer authorization<br/>(EIP-3009, offline, no gas)
+
+    P->>M: GET /api/report<br/>PAYMENT-SIGNATURE: signed authorization
+    M->>F: POST /verify
+    F->>C: simulate (eth_call)
+    F-->>M: isValid: true
+
+    Note over M: Your handler runs
+
+    M->>F: POST /settle
+    F->>C: transferWithAuthorization<br/>(we pay the WBT gas)
+    C-->>F: receipt
+    F-->>M: tx hash
+    M-->>P: 200 OK + content<br/>PAYMENT-RESPONSE: tx hash
+```
+
+In plain words:
+
+1. **Your API names a price.** An unpaid request gets `402` with the terms.
+2. **The payer signs, but sends nothing.** Their wallet signs a message saying "move 0.01 USDT from me to this merchant". The message costs nothing and needs no WBT.
+3. **We check it, then submit it.** We confirm the signature and the balance, simulate the transfer, and send the transaction. We pay the gas.
+4. **The USDT goes straight to you.** It never passes through us. The signature fixes the recipient, the amount, an expiry time and a one-time nonce, so all we can decide is whether to submit it.
+
+---
+
+## Architecture
+
+```mermaid
+flowchart LR
+    subgraph Clients
+        A[Payer<br/>@x402/fetch]
+        B[Merchant API<br/>@x402/express · hono · next]
+    end
+
+    subgraph App["whitechain-facilitator (Next.js)"]
+        direction TB
+        R["x402 routes<br/>/verify · /settle · /supported<br/>/assets · /health"]
+        G["guards.ts<br/>allowlist · dust floor<br/>rate limits · signer balance"]
+        X["facilitator.ts<br/>@x402/core + @x402/evm<br/>one instance per network"]
+        S["chain.ts<br/>viem clients + signer"]
+        L["db.ts<br/>payment log"]
+        W["Website<br/>/docs · /logs · /test"]
+        N[("networks.ts<br/>networks + allowed tokens")]
+    end
+
+    DB[("Postgres<br/>payments_testnet<br/>payments_mainnet")]
+    WC(("Whitechain<br/>RPC"))
+
+    A -- "402 → sign → retry" --> B
+    B -- "HTTPFacilitatorClient" --> R
+    R --> G --> X --> S --> WC
+    X -- "lifecycle hooks" --> L --> DB
+    W -- "/api/logs · /api/stats" --> L
+    N -.-> G
+    N -.-> X
+    N -.-> W
+```
+
+**How a request moves through it**
+
+- **Routes** sit at the bare origin (`/verify`, not `/api/verify`), because that is the URL `HTTPFacilitatorClient` calls.
+- **Guards** run first, cheapest check first: string checks, then in-memory rate limits. For `/settle` only, one RPC read of the signer's balance follows. A request rejected by these checks never reaches simulation or a transaction.
+- **Facilitator.** All the protocol work (signature recovery, balance checks, simulation, nonce handling, retrying a pending transaction) is done by the official `@x402/core` and `@x402/evm` libraries. None of it is written here.
+- **One facilitator per network.** The x402 signer is tied to one chain, so each network gets its own instance. Both use the same key, so there is one wallet to fund.
+- **Logging** hangs off the facilitator's lifecycle hooks. It never blocks or fails a payment. If the database is down, payments still settle.
+- **`networks.ts`** is the one place where addresses live. Guards, clients, docs and `/assets` all read it.
+
+---
+
+## Accept payments (merchants)
+
+Use the normal x402 middleware. The only Whitechain-specific line is the facilitator URL.
 
 ```bash
-pnpm install
-cp .env.example .env          # fill in FACILITATOR_PRIVATE_KEY and DATABASE_URL
-pnpm verify-assets            # proves the asset registry against both chains
-pnpm migrate                  # optional: the app creates its tables on first use
-pnpm dev
+npm install @x402/core @x402/evm @x402/express
 ```
-
-Run `verify-assets` first. It checks every allowlisted token's EIP-3009 typehash, decimals, and EIP-712 domain against the token's own `DOMAIN_SEPARATOR()`. It exits non-zero on a mismatch and prints the correct values. Nothing downstream is trustworthy until it passes.
-
-```
-Whitechain Sepolia  USDT  0xcedfB56113143d55b2358b8CFbB0dEB5Ad2f55a7
-  decimals        ok
-  eip-3009        ok (canonical typehash)
-  separator       0xcdcfacb6b15c8238b4e5fbb47bdb83b7f83f50a531d264bf9763d2bd1d3d2a25
-  domain          ok  { name: "Tether USD", version: "1" }
-
-1/1 assets verified.
-```
-
-## Endpoints
-
-| Route | Purpose |
-| --- | --- |
-| `POST /verify` | x402 verification. Read-only, no gas, safe to call freely. |
-| `POST /settle` | Submits the authorization on-chain and pays the WBT fee. |
-| `GET /supported` | Scheme and network discovery, plus the signer that pays your gas. |
-| `GET /assets` | Allowlisted assets per network with their **verified** EIP-712 domains. |
-| `GET /health` | Per-network signer balance and block height. `503` when degraded. |
-| `GET /api/logs` | The payment log behind `/logs`. |
-| `GET /api/stats` | Per-network totals. |
-
-The base URL is the bare origin — no `/api` prefix, no rewrites — because `HTTPFacilitatorClient` builds `${url}/verify`. One URL serves both networks, since x402 carries the network inside the payment payload.
-
-## Using it as a merchant
-
-Standard x402 packages, unmodified — only the facilitator URL is ours:
 
 ```ts
 import express from "express";
@@ -66,164 +132,239 @@ const facilitatorClient = new HTTPFacilitatorClient({ url: "https://your-facilit
 const resourceServer = new x402ResourceServer(facilitatorClient)
   .register("eip155:1874", new ExactEvmScheme());
 
-app.use(paymentMiddleware({
-  "GET /api/report": {
-    accepts: {
-      scheme: "exact",
-      network: "eip155:1874",
-      payTo: "0xYourMerchantAddress",
-      price: {
-        asset: "0xcedfB56113143d55b2358b8CFbB0dEB5Ad2f55a7",   // USDT (Sepolia)
-        amount: "10000",                                        // 0.01, six decimals
-        extra: { name: "Tether USD", version: "1" },
+app.use(
+  paymentMiddleware(
+    {
+      "GET /api/report": {
+        accepts: {
+          scheme: "exact",
+          network: "eip155:1874",
+          payTo: "0xYourMerchantAddress",
+          price: {
+            asset: "0xcedfB56113143d55b2358b8CFbB0dEB5Ad2f55a7", // USDT (Sepolia)
+            amount: "10000",                                    // 0.01 USDT (6 decimals)
+            extra: { name: "Tether USD", version: "1" },
+          },
+        },
+        description: "One generated report",
       },
     },
-    description: "One generated report",
-  },
-}, resourceServer));
+    resourceServer,
+  ),
+);
+
+app.get("/api/report", (_req, res) => res.json({ report: "the paid content" }));
+app.listen(3000);
 ```
 
-Other chains keep their own facilitator: pass an array, `new x402ResourceServer([whitechainClient, otherClient])`, and each payment routes to the facilitator that advertises its network. Payers using `@x402/fetch` must opt Whitechain USDT in via `spendControls.allowedAssets`, since it is not in the client's default asset list. Full examples: `content/docs/quickstart-merchant.mdx` and `quickstart-agent.mdx`.
+Hono (`@x402/hono`) and Next.js (`@x402/next`, `withX402`) work the same way. See [the merchant guide](content/docs/quickstart-merchant.mdx).
 
-**The price is written out longhand for a reason.** Neither Whitechain network is in `@x402/evm`'s `DEFAULT_ASSETS`, so the usual `price: "$0.01"` shorthand has no asset to resolve to and throws. You supply the three fields it would have filled in — and `extra` is the one that bites: it is the token's EIP-712 domain, and if it is wrong by a character every signature recovers to a different address and fails with no transaction and no revert to debug. Fetch verified values from `/assets` rather than guessing.
+> **Why not `price: "$0.01"`?** That shorthand looks the chain up in x402's built-in token list, and Whitechain isn't in it. So you give the token address, the amount and `extra` yourself. Copy `extra` exactly: it is the token's signing domain, and if one character is off, every signature fails with nothing on-chain to debug. Verified values are served at `/assets`.
 
-## Supported assets
+**Already taking payments on other chains?** Keep your current facilitator and add this one. `x402ResourceServer` accepts an array and sends each payment to the facilitator that supports its network:
 
-Settlement is via EIP-3009 `transferWithAuthorization`, so support is a property of the contract, not a policy choice. Assets are allowlisted rather than auto-detected: a relayer that sponsors gas for any token it is handed is a free gas faucet.
+```ts
+const resourceServer = new x402ResourceServer([
+  new HTTPFacilitatorClient({ url: "https://your-facilitator.example" }), // Whitechain
+  new HTTPFacilitatorClient({ url: "https://x402.org/facilitator" }),     // Base, etc.
+])
+  .register("eip155:1874", new ExactEvmScheme())
+  .register("eip155:84532", new ExactEvmScheme());
+```
 
-| Token | Network | Address | EIP-3009 | `extra` |
-| --- | --- | --- | --- | --- |
-| USDT | Sepolia | `0xcedfB56113143d55b2358b8CFbB0dEB5Ad2f55a7` | yes | `{ name: "Tether USD", version: "1" }` |
+---
 
-USDT is the only stablecoin this facilitator sponsors. Mainnet has no entry, for the reason below.
-
-### The USDT situation
-
-The two networks are not symmetric, which catches people out:
-
-- **Sepolia USDT is `TetherTokenV2`** and **does** support EIP-3009. Its `TRANSFER_WITH_AUTHORIZATION_TYPEHASH()` returns the canonical `0x7c7c6cdb…1a2267`. If you have read that Whitechain USDT lacks EIP-3009 and therefore needs a Permit2 workaround, that is false for the testnet contract.
-- **Mainnet USDT (`0xF95604a4…`) is `TetherToken` V1** and does **not**. It has `permit` and `nonces`, but no `transferWithAuthorization`, no `receiveWithAuthorization`, no `authorizationState` — the typehash call reverts. Its total supply is also `0`. So it cannot be paid gaslessly at all, and is excluded.
+## Pay for an API (agents and scripts)
 
 ```bash
-# Sepolia — returns the canonical typehash
+npm install @x402/fetch @x402/evm viem
+```
+
+```ts
+import { wrapFetchWithPaymentFromConfig } from "@x402/fetch";
+import { ExactEvmScheme } from "@x402/evm/exact/client";
+import { privateKeyToAccount } from "viem/accounts";
+
+const account = privateKeyToAccount(process.env.AGENT_PRIVATE_KEY as `0x${string}`);
+
+const fetchWithPayment = wrapFetchWithPaymentFromConfig(fetch, {
+  schemes: [{ network: "eip155:1874", client: new ExactEvmScheme(account) }],
+  spendControls: {
+    allowedAssets: [
+      { network: "eip155:1874", asset: "0xcedfB56113143d55b2358b8CFbB0dEB5Ad2f55a7", maxAmountPerPayment: "50000" },
+    ],
+  },
+});
+
+const response = await fetchWithPayment("https://api.example.com/api/report");
+```
+
+The account needs USDT and **no WBT**.
+
+The `allowedAssets` entry is required. By default the x402 client only signs for tokens in its built-in list, and Whitechain USDT isn't one of them, so without it every payment fails with `rejected by spendControls`. Keep the cap (`50000` = 0.05 USDT per payment).
+
+Full guide: [content/docs/quickstart-agent.mdx](content/docs/quickstart-agent.mdx).
+
+---
+
+## Run your own facilitator
+
+**You need:** Node 22+, pnpm, and a wallet with some testnet WBT for gas. A Postgres URL is optional; without one, payments still settle and only the public log is empty.
+
+```bash
+pnpm install
+cp .env.example .env     # set FACILITATOR_PRIVATE_KEY (and DATABASE_URL if you want the log)
+pnpm verify-assets       # checks the token list against the live chain
+pnpm dev                 # http://localhost:3000
+```
+
+Then open:
+
+- `/health`: is the signer funded and the RPC reachable?
+- `/test`: connect a wallet and push a real payment through `/verify` and `/settle`
+- `/logs`: every settlement, with explorer links
+
+**Configuration** (full list in [`.env.example`](.env.example)):
+
+| Variable | Required | Notes |
+| --- | --- | --- |
+| `FACILITATOR_PRIVATE_KEY` | yes | Pays gas. 64 hex characters, with or without `0x`. It cannot move customer funds. |
+| `DATABASE_URL` | no | Postgres for the public log. Tables are created automatically on first use. |
+| `NEXT_PUBLIC_FACILITATOR_URL` | no | Your public origin; used in the docs' copy-paste snippets. |
+| `MAINNET_ENABLED` | no | `false` by default. |
+
+**Deploying:**
+
+- **A long-running server** (Railway, Fly, a VM): `pnpm build && pnpm start`, behind a proxy that sets a trusted client-IP header (`x-real-ip`, `cf-connecting-ip` or `x-vercel-forwarded-for`). Without one, the per-IP limit falls back to `x-forwarded-for`, which a caller can fake to dodge it.
+- **Serverless** (Vercel): add a `vercel.json` with `{ "framework": "nextjs" }`. Each instance keeps its own rate-limit counters, so limits are looser than configured.
+
+> **Note:** There is no daily gas budget. The most anyone can make you spend is the WBT in the signer wallet. Keep only what you're willing to spend on gas in it.
+
+---
+
+## API endpoints
+
+| Route | What it does |
+| --- | --- |
+| `POST /verify` | Checks a payment. Read-only, no gas. |
+| `POST /settle` | Submits the payment on-chain and pays the gas. |
+| `GET /supported` | Networks and schemes served, plus the address that pays gas. |
+| `GET /assets` | Allowed tokens with their verified signing domains (`extra`). |
+| `GET /health` | Signer balance, block height, settles left. `503` when degraded. |
+| `GET /api/logs` | The payment log (paginated with `before` / `nextBefore`). |
+| `GET /api/stats` | Totals per network. |
+
+`/verify`, `/settle` and `/supported` are the standard x402 v2 facilitator interface. Full request and response shapes: [content/docs/api-reference.mdx](content/docs/api-reference.mdx).
+
+---
+
+## Supported token
+
+| Token | Network | Address | `extra` |
+| --- | --- | --- | --- |
+| USDT | Sepolia | `0xcedfB56113143d55b2358b8CFbB0dEB5Ad2f55a7` | `{ name: "Tether USD", version: "1" }` |
+
+Settlement uses EIP-3009 `transferWithAuthorization`, so a token is supported only if its contract has that function. Tokens are allowlisted, not auto-detected: a facilitator that pays gas for any token it's handed is a free gas tap.
+
+**Adding a token:** add it to `lib/networks.ts`, then run `pnpm verify-assets`. That checks the contract really has EIP-3009, and that the signing domain you entered matches the token's own `DOMAIN_SEPARATOR()`. Don't ship until it passes: a wrong domain makes every signature fail silently.
+
+### Why not mainnet?
+
+Mainnet USDT (`0xF95604a4…`) is an older Tether contract. It has `permit`, but no `transferWithAuthorization`, so it cannot be paid without gas. Sepolia USDT is the newer contract and does support it. Check it yourself:
+
+```bash
+# Sepolia: returns the EIP-3009 typehash
 cast call 0xcedfB56113143d55b2358b8CFbB0dEB5Ad2f55a7 \
   "TRANSFER_WITH_AUTHORIZATION_TYPEHASH()(bytes32)" --rpc-url https://rpc.testnet.whitechain.io
 
-# Mainnet — reverts
+# Mainnet: reverts
 cast call 0xF95604a4034d8407d3F1256De56C9ae37F299cb8 \
   "TRANSFER_WITH_AUTHORIZATION_TYPEHASH()(bytes32)" --rpc-url https://rpc.whitechain.io
 ```
 
-## Networks
+Because of this, `/supported` doesn't list mainnet. A merchant can't accidentally configure a network where every payment would fail.
 
-| | Whitechain mainnet | Whitechain Sepolia |
+### Networks
+
+| | Sepolia | Mainnet |
 | --- | --- | --- |
-| Chain ID | `1875` | `1874` |
-| CAIP-2 | `eip155:1875` | `eip155:1874` |
-| RPC | `https://rpc.whitechain.io` | `https://rpc.testnet.whitechain.io` |
-| Explorer | `https://explorer.whitechain.io` | `https://explorer.testnet.whitechain.io` |
-| Faucet | — | `https://faucet.testnet.whitechain.io` |
-| Gas | WBT, 18 dec, 5 gwei min base fee, ~1s blocks | same |
+| Chain ID | `1874` | `1875` |
+| RPC | `https://rpc.testnet.whitechain.io` | `https://rpc.whitechain.io` |
+| Explorer | `https://explorer.testnet.whitechain.io` | `https://explorer.whitechain.io` |
+| Faucet | `https://faucet.testnet.whitechain.io` | — |
+| Gas | WBT, 5 gwei minimum, ~1s blocks | same |
 
-Both are OP Stack L2s settling to Ethereum. Permit2 (`0x0000…78BA3`) and Multicall3 are deployed on both; `x402ExactPermit2Proxy` (`0x402085c2…0001`) is on Sepolia only. We do not use the Permit2 path — Sepolia USDT is natively EIP-3009 — but the deterministic CREATE2 deployer is present on mainnet if someone needs the proxies there.
+---
 
-## Architecture
+## Safety limits
 
-All the protocol work is in the official libraries. `@x402/core/facilitator` and `@x402/evm/exact/facilitator` handle EIP-712 recovery (including EIP-1271 smart accounts), balance checks, simulation, nonce handling and `settlement_pending` reconciliation. None of it is reimplemented.
+These run before the x402 libraries see the request. A request they reject is never simulated or broadcast. The signer-balance check and the mainnet switch apply to `/settle` only; `/verify` spends no gas, so it skips them.
+
+| Check | Default | Setting |
+| --- | --- | --- |
+| Token must be allowlisted on that network | USDT on Sepolia | `lib/networks.ts` |
+| Minimum payment (gas would exceed it otherwise) | 0.01 USDT | `MIN_AMOUNT_BASE_UNITS` |
+| Rate limits per minute: IP / payer / merchant / global | 120 / 30 / 120 / 1200 | `RATE_LIMIT_*` |
+| Refuse to settle when signer is low | below 0.05 WBT | `MIN_SIGNER_BALANCE_WBT` |
+| Gas cap per settlement | 300,000 | `MAX_SETTLE_GAS` |
+| Mainnet settlement switch | off | `MAINNET_ENABLED` |
+
+Operational refusals (rate limited, signer unavailable or low, mainnet off) return `429`/`503` with a `Retry-After` header. Invalid payments return `200` with `isValid: false`. Nothing is broadcast in either case.
+
+**What goes in the public log:** addresses, amounts, results, tx hashes and gas cost. Signatures and nonces are **never** stored. Error text is scrubbed of RPC URLs and long hex values before it's saved.
+
+---
+
+## Project layout
 
 ```
 lib/
-  networks.ts          network + asset registry — the only place addresses live
-  chain.ts             viem clients per chain, the signer, EIP-712 domain verification
-  facilitator.ts       one x402Facilitator per network + logging hooks
-  facilitator-http.ts  request parsing and refusal shaping for /verify and /settle
-  guards.ts            allowlist, dust floor, rate limits, signer balance floor, kill switch
-  db.ts                Neon Postgres — the public payment log
-  docs-nav.ts          docs table of contents, and the route manifest
+  networks.ts          networks + allowed tokens — the only place addresses live
+  chain.ts             viem clients, the gas-paying signer, signing-domain checks
+  facilitator.ts       one x402 facilitator per network, plus logging hooks
+  facilitator-http.ts  request parsing shared by /verify and /settle
+  guards.ts            allowlist, dust floor, rate limits, signer balance, mainnet switch
+  db.ts                payment log: insert, list, stats
+  schema.ts            log tables, created automatically on first use
+  redact.ts            scrubs error text before it's stored or returned
 
 app/
-  (facilitator)/       the x402 API. Route group, so these stay at the root:
-    verify/            POST /verify
-    settle/            POST /settle
-    supported/         GET  /supported
-    assets/            GET  /assets
-    health/            GET  /health
-  api/{logs,stats}/    JSON behind the log page
-  page.tsx             landing
-  logs/                public transaction log
-  docs/                MDX renderer + sidebar
+  (facilitator)/       x402 API at the bare origin: verify, settle, supported, assets, health
+  api/                 logs + stats JSON for the website
+  docs/  logs/  test/  website pages
 
-content/docs/*.mdx     the documentation itself
-lib/schema.ts          log table DDL, applied automatically on first use
-scripts/               migrate, verify-assets, smoke, guards.test
+content/docs/          the documentation (MDX)
+scripts/               verify-assets, smoke, migrate, guards.test
 ```
 
-The facilitator endpoints live in a route group rather than under `/api` so they
-stay at the bare origin, which is what `HTTPFacilitatorClient` expects. The group
-separates them from the website without changing a URL.
+Only want the API? Delete `app/page.tsx`, `app/globals.css`, `app/docs`, `app/logs`, `app/test`, `app/api`, `components/`, `content/`, `mdx-components.tsx` and `lib/docs-nav.ts`, then reduce `app/layout.tsx` to a bare `<html><body>{children}</body></html>`. Nothing else in `lib/` depends on the website.
 
-Two design points worth knowing:
-
-- **One facilitator instance per network.** `FacilitatorEvmSigner` has no chain argument on `readContract`/`writeContract`, so a signer is bound to one chain. Requests dispatch on `paymentPayload.accepted.network`. The same key is used on both, so there is one address to fund — but the kill switch is per network, because mainnet WBT is real money.
-- **No gas budget.** Spend is capped only by the signer's WBT balance. Rate-limit counters are per process: exact on a single instance, looser on serverless. See [self-host](content/docs/self-host.mdx#deploying).
-
-## Guards
-
-The private key is the only thing at risk, and only for gas. Every request runs a preflight before the x402 libraries are touched, in rising order of cost — string comparisons, then in-memory counters, then RPC and database reads. Rejections spend nothing.
-
-| Guard | Default |
-| --- | --- |
-| Network + asset allowlist, scoped per network | — |
-| Mainnet kill switch (`/verify` unaffected) | `MAINNET_ENABLED=false` |
-| Dust floor | 0.01 (`10000` base units) |
-| Rate limits (IP / payer / merchant / global per minute) | 120 / 30 / 120 / 1200 |
-| Per-settlement gas cap | 300,000 |
-| Low-balance refusal | below 0.05 WBT |
-
-Operational refusals return `429`/`503` with `Retry-After`; protocol verdicts return `200` with `isValid: false`. Nothing is broadcast either way.
-
-Signatures and authorization nonces are never written to the database — only the metadata the log page shows.
-
-## Database
-
-Neon (or any) Postgres, via `DATABASE_URL`. One table per network, `payments_testnet` and `payments_mainnet`, generated from one template in `lib/schema.ts` so they cannot drift, and created automatically on first use. A unique partial index on `tx_hash` makes the settle-retry path idempotent and stops a retry logging the same transaction twice.
+---
 
 ## Testing
 
 ```bash
 pnpm typecheck
-pnpm test             # guard logic — 14 assertions, no database or RPC needed
-pnpm verify-assets    # asset registry vs. both live chains
-pnpm smoke            # end-to-end; needs SMOKE_PAYER_PRIVATE_KEY
+pnpm test            # safety checks, no database or RPC needed
+pnpm verify-assets   # token list vs. the live chain
+pnpm smoke           # real end-to-end payment (needs a funded payer)
 ```
 
-`pnpm smoke` is the one that proves the product. It builds a payment with the same `@x402/evm` client a real agent uses and posts it to `/verify` and `/settle`, then asserts:
+`pnpm smoke` is the test that proves the product. It pays with the same `@x402/evm` client an agent uses, then checks:
 
-- the payer held **zero WBT** before, and still holds exactly zero after — if it moved, gas was not sponsored
-- the payer's token balance fell by exactly the authorized amount
-- `payTo` received exactly that amount, so the funds went where the signature said
-- the facilitator's own WBT balance fell, so it is the one that paid
-- `/assets` advertised the EIP-712 domain the signature was actually built with
-- the settlement landed in the public log
+- the payer had **zero WBT** before and still has zero after, so gas really was sponsored
+- the payer's USDT dropped by exactly the amount, and `payTo` received exactly that
+- the facilitator's WBT dropped, so it paid the gas
+- `/assets` advertises the same signing domain the payment was signed with
+- the payment shows up in the public log
 
-It needs `SMOKE_PAYER_PRIVATE_KEY` (an account with the stablecoin and no WBT) and `SMOKE_PAY_TO`.
+It needs `SMOKE_PAYER_PRIVATE_KEY` (holds USDT, no WBT) and `SMOKE_PAY_TO`. By default it targets `http://localhost:3000` on testnet. To test a deployed instance:
 
 ```bash
-pnpm smoke -- --network=mainnet --url=https://facilitator.example
+pnpm smoke -- --url=https://your-facilitator.example --network=testnet
 ```
 
-## Self-hosting
-
-See [docs/self-host](content/docs/self-host.mdx) for the full environment reference. The short version: Node 22+, a Postgres URL, and a funded WBT wallet.
-
-Either deployment works:
-
-- **A long-lived process** (Railway, Fly, a VM): `pnpm build && pnpm start` behind a reverse proxy. Rate limits are exactly what you configured. This is what the defaults assume.
-- **Vercel / serverless**: needs `vercel.json` with `{ "framework": "nextjs" }`. Concurrent instances each hold their own rate-limit counters, so per-IP limits run looser than configured — spend is capped only by the signer's WBT balance.
-
-To add an asset, edit `lib/networks.ts` and run `pnpm verify-assets`; it fails loudly rather than letting a wrong domain reach production.
-
-If you only want the API, delete `app/page.tsx`, `app/docs`, `app/logs` and `components/`. Nothing in `lib/` depends on them.
+---
 
 ## License
 

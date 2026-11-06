@@ -7,7 +7,6 @@ import { useNetwork } from "./network-provider";
 type LogRow = {
   id: string;
   created_at: string;
-  kind: "verify" | "settle";
   ok: boolean;
   error_reason: string | null;
   asset_symbol: string | null;
@@ -43,13 +42,11 @@ export function PaymentLog() {
   const { key, net } = useNetwork();
   const [rows, setRows] = useState<LogRow[]>([]);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
-  const [settlesOnly, setSettlesOnly] = useState(false);
   const [filter, setFilter] = useState("");
   const [applied, setApplied] = useState("");
 
   const load = useCallback(async () => {
     const params = new URLSearchParams({ network: key, limit: "100" });
-    if (settlesOnly) params.set("settlesOnly", "1");
     // One box for both sides of a payment: `address` matches either role, so the
     // reader does not need to know whether what they have is the payer or the merchant.
     if (applied) params.set("address", applied);
@@ -63,7 +60,7 @@ export function PaymentLog() {
     } catch {
       setState("error");
     }
-  }, [key, settlesOnly, applied]);
+  }, [key, applied]);
 
   useEffect(() => {
     void load();
@@ -107,15 +104,6 @@ export function PaymentLog() {
           )}
         </form>
 
-        <label className="ml-auto flex items-center gap-2 text-xs text-chalk-dim">
-          <input
-            type="checkbox"
-            checked={settlesOnly}
-            onChange={(event) => setSettlesOnly(event.target.checked)}
-            className="accent-accent"
-          />
-          Settlements only
-        </label>
       </div>
 
       <div className="mt-4 overflow-x-auto rounded-xl border border-ink-line">
@@ -123,7 +111,6 @@ export function PaymentLog() {
           <thead className="bg-ink-raised font-mono text-[11px] tracking-wide text-chalk-dim uppercase">
             <tr>
               <th className="px-3 py-2.5 font-normal">When</th>
-              <th className="px-3 py-2.5 font-normal">Kind</th>
               <th className="px-3 py-2.5 font-normal">Payer</th>
               <th className="px-3 py-2.5 font-normal">Merchant</th>
               <th className="px-3 py-2.5 text-right font-normal">Amount</th>
@@ -136,9 +123,6 @@ export function PaymentLog() {
               <tr key={row.id} className="border-t border-ink-line align-top">
                 <td className="px-3 py-2.5 whitespace-nowrap text-chalk-dim" title={row.created_at}>
                   {relative(row.created_at)}
-                </td>
-                <td className="px-3 py-2.5 font-mono text-xs">
-                  <span className={row.kind === "settle" ? "text-accent" : "text-chalk-dim"}>{row.kind}</span>
                 </td>
                 <td className="px-3 py-2.5 font-mono text-xs" title={row.payer ?? undefined}>
                   {short(row.payer)}
@@ -164,7 +148,7 @@ export function PaymentLog() {
                         {short(row.tx_hash)} ↗
                       </a>
                     ) : (
-                      <span className="font-mono text-xs text-mainnet">valid</span>
+                      <span className="font-mono text-xs text-mainnet">settled</span>
                     )
                   ) : (
                     <span className="font-mono text-xs text-danger" title={row.error_reason ?? undefined}>
@@ -177,7 +161,7 @@ export function PaymentLog() {
 
             {rows.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-3 py-10 text-center text-sm text-chalk-dim">
+                <td colSpan={6} className="px-3 py-10 text-center text-sm text-chalk-dim">
                   {state === "loading" && "Loading…"}
                   {state === "error" && "Could not read the payment log."}
                   {state === "ready" &&

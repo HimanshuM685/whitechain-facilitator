@@ -23,6 +23,7 @@ import type {
 import { registerExactEvmScheme } from "@x402/evm/exact/facilitator";
 import { facilitatorSignerFor, publicClientFor } from "./chain";
 import { logPayment } from "./db";
+import { config } from "./guards";
 import { findAsset, NETWORK_KEYS, NETWORKS, networkByCaip2, type NetworkKey } from "./networks";
 import { safeErrorMessage } from "./redact";
 
@@ -64,8 +65,20 @@ const NO_COST = { gas_used: null, gas_cost_wei: null };
 function build(net: NetworkKey): x402Facilitator {
   const facilitator = new x402Facilitator();
 
+  const signer = facilitatorSignerFor(net);
+
   registerExactEvmScheme(facilitator, {
-    signer: facilitatorSignerFor(net),
+    signer: {
+      ...signer,
+      // Hard gas ceiling on every settlement (MAX_SETTLE_GAS). Without it viem
+      // uses its own estimate, so a token upgrade or pathological transfer
+      // could burn any amount of our WBT. An EIP-3009 transfer uses 70–90k.
+      writeContract: (args) =>
+        signer.writeContract({
+          ...args,
+          gas: args.gas !== undefined && args.gas < config.maxSettleGas ? args.gas : config.maxSettleGas,
+        }),
+    },
     networks: NETWORKS[net].caip2,
     // Re-simulate inside settle so a payment that would revert on-chain is
     // never broadcast. Costs one extra eth_call; saves a wasted WBT fee.
@@ -78,23 +91,9 @@ function build(net: NetworkKey): x402Facilitator {
     return at === undefined ? null : Date.now() - at;
   };
 
+  // Only settlements are logged. Verification spends nothing and moves no
+  // money, so it would only add noise to the public log.
   return facilitator
-    .onBeforeVerify(async (ctx) => {
-      started.set(ctx.paymentPayload, Date.now());
-    })
-    .onAfterVerify(async ({ paymentPayload, requirements, result }) => {
-      await logPayment(net, {
-        kind: "verify",
-        ok: result.isValid,
-        error_reason: result.invalidReason ?? null,
-        payer: result.payer ?? null,
-        tx_hash: null,
-        gas_used: null,
-        gas_cost_wei: null,
-        latency_ms: elapsed(paymentPayload),
-        ...describe(paymentPayload, requirements, net),
-      });
-    })
     .onBeforeSettle(async (ctx) => {
       started.set(ctx.paymentPayload, Date.now());
     })

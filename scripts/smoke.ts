@@ -201,7 +201,7 @@ console.log(`ok  facilitator paid ${formatEther(signerWbtBefore - signerWbtAfter
 
 /* 7. And it should be in the public log. */
 
-const logs = (await (await fetch(`${baseUrl}/api/logs?network=${net}&limit=25&settlesOnly=1`)).json()) as {
+const logs = (await (await fetch(`${baseUrl}/api/logs?network=${net}&limit=25`)).json()) as {
   rows: { tx_hash: string | null; ok: boolean; gas_cost_wei: string | null }[];
 };
 const logged = logs.rows.find((row) => row.tx_hash?.toLowerCase() === txHash.toLowerCase());
