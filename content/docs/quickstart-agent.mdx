@@ -48,6 +48,10 @@ All payment requirements were rejected by spendControls: only default assets or 
 
 The `allowedAssets` entry above opts this one token in, with its own cap in base units (`50000` = 0.05 USDT). Keep the cap: an agent with an unbounded signer and a tool that fetches arbitrary URLs is a bad combination. `spendControls: false` also works, and removes every limit.
 
+### Finding endpoints to call
+
+Don't have a URL yet? The [Bazaar](/bazaar) lists every verified x402 endpoint paid through this facilitator, and an agent can read it with `withBazaar(...).extensions.bazaar.listResources()`: all of them, one merchant's (`payTo`), or by keyword. See [discover a merchant's endpoints](/docs/bazaar#3-discover-a-merchants-endpoints).
+
 ## 3. Fund the agent — with the token only
 
 The account needs a balance of the asset it will pay in. That is all.

@@ -223,6 +223,10 @@ You want a `402`, a `PAYMENT-REQUIRED` header, and — once you base64-decode it
 
 Then point an agent at it: [pay for an endpoint](/docs/quickstart-agent).
 
+## Get discovered
+
+Add a name, icon, tags and input/output docs to your route and you are listed in the [Bazaar](/bazaar), where agents look for APIs to pay. Listing happens after your first settled payment, or right away if you register. See [List your API in the Bazaar](/docs/bazaar).
+
 ## Things to get right before production
 
 - **`payTo` is where the money lands.** It is in the signed message, so neither we nor anyone else can redirect it — but a typo sends every payment to the typo. Check it on the explorer.

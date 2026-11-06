@@ -216,6 +216,31 @@ The x402 Bazaar catalog, in the official `DiscoveryResourcesResponse` shape read
 
 A merchant's code declares its pay-to address and x402 endpoints. We call each one and list it only if its live `402` pays that address on a network we serve. Body and response: see [registering](/docs/bazaar#2-register-up-front-optional). Rate limited per IP; `429` with `Retry-After` when exceeded.
 
+## GET /api/bazaar
+
+Merchant cards behind the [Bazaar](/bazaar) page: one per pay-to address with at least one verified endpoint. `?network=testnet|mainnet` filters by network.
+
+```json
+{
+  "merchants": [
+    {
+      "payTo": "0x…",
+      "name": "Acme",
+      "website": "https://acme.example",
+      "iconUrl": "https://acme.example/icon.png",
+      "network": "eip155:1874",
+      "endpointCount": 3,
+      "settleCount": 41,
+      "lastVerifiedAt": "2026-11-06T09:12:44.120Z"
+    }
+  ]
+}
+```
+
+## GET /api/bazaar/:payTo
+
+One merchant and all of its verified endpoints. Each endpoint has the same fields as a `/discovery/resources` item, plus `method`, `settleCount` and `verifiedAt`. `404` if the address has no verified endpoints.
+
 ## GET /api/stats
 
 Settlement totals per network, as shown on the front page. Computed live from the settlement log.
