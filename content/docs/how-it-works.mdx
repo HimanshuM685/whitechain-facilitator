@@ -69,6 +69,25 @@ This is all handled by `@x402/evm` — the official implementation, not a reimpl
 
 The on-chain transaction has `from` = our signer and emits a `Transfer` from the payer to the merchant. Those are two different addresses on purpose: we pay the fee, we never touch the funds.
 
+### Every settlement is tagged
+
+Each transaction we broadcast carries a note, modelled on the transaction note the Algorand x402 facilitator writes:
+
+```
+x402-payment-v1-1793918603937
+```
+
+That is `x402-payment-v1-` plus the broadcast time in milliseconds. EVM transactions have no note field, so it is appended to the end of the `transferWithAuthorization` call data. The token contract ignores bytes after its arguments, so the transfer is exactly the same; the note just stays in the transaction's input data for good. That is how you can tell, from the chain alone, that a payment went through this facilitator. The [transaction log](/logs) shows it under each hash.
+
+Read it back from any settlement:
+
+<NetCode lang="bash">
+{`cast tx 0xYourTxHash input --rpc-url {{rpc}} \\
+  | tail -c 59 | cast --to-ascii        # → x402-payment-v1-1793918603937`}
+</NetCode>
+
+It costs about 500 extra gas per settlement, which we pay.
+
 If the broadcast lands but the receipt wait times out, we return `settlement_pending` **with the transaction hash**. That is not a failure — the payment may well confirm. A retry for the same payload reconciles against the already-broadcast transaction rather than sending a second one.
 
 ## The trust model

@@ -198,6 +198,25 @@ await check("error text is redacted before it can be stored or published", () =>
   assert.equal(safeErrorMessage("plain string"), "plain string");
 });
 
+// The on-chain note must survive being appended to calldata and read back.
+await check("settlement note round-trips through calldata", async () => {
+  const { settlementNote, withNote, decodeNote } = await import("../lib/note");
+  const note = settlementNote(1793918603937);
+  assert.equal(note, "x402-payment-v1-1793918603937");
+
+  // Fake transferWithAuthorization calldata: selector + one ABI word.
+  const calldata = `0xe3ee160e${"00".repeat(32)}` as const;
+  const suffixed = `${calldata}${withNote(undefined, note).slice(2)}` as `0x${string}`;
+  assert.equal(decodeNote(suffixed), note);
+  assert.equal(decodeNote(calldata), null, "untagged calldata must not decode to a note");
+
+  // A suffix the x402 library already supplied stays first; ours comes last.
+  const both = withNote("0xabcd", note);
+  assert.ok(both.startsWith("0xabcd"));
+  assert.equal(decodeNote(both), note);
+  assert.match(settlementNote(), /^x402-payment-v1-\d{13}$/);
+});
+
 // Timestamps alone are not unique; the cursor carries the id to break ties.
 await check("log cursor splits timestamp and id, and accepts a bare timestamp", async () => {
   const { parseCursor } = await import("../lib/db");

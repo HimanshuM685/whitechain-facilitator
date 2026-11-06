@@ -65,6 +65,7 @@ In plain words:
 2. **The payer signs, but sends nothing.** Their wallet signs a message saying "move 0.01 USDT from me to this merchant". The message costs nothing and needs no WBT.
 3. **We check it, then submit it.** We confirm the signature and the balance, simulate the transfer, and send the transaction. We pay the gas.
 4. **The USDT goes straight to you.** It never passes through us. The signature fixes the recipient, the amount, an expiry time and a one-time nonce, so all we can decide is whether to submit it.
+5. **The transaction is tagged.** Every settlement carries a note like `x402-payment-v1-1793918603937` appended to its call data (EVM has no note field). The transfer is unaffected; the note stays on-chain, so anyone can see the payment went through this facilitator.
 
 ---
 

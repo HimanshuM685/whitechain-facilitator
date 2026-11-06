@@ -20,6 +20,7 @@ type LogRow = {
   gas_cost_wei: string | null;
   latency_ms: number | null;
   txUrl: string | null;
+  note: string | null;
 };
 
 const short = (address: string | null) =>
@@ -167,6 +168,12 @@ export function PaymentLog() {
                     <span className="font-mono text-xs text-danger" title={row.error_reason ?? undefined}>
                       {row.error_reason ?? "failed"}
                     </span>
+                  )}
+                  {/* The tag written into the transaction's input data on-chain. */}
+                  {row.note && (
+                    <div className="mt-0.5 font-mono text-[10.5px] text-chalk-dim" title="On-chain note (calldata suffix)">
+                      {row.note}
+                    </div>
                   )}
                 </td>
               </motion.tr>

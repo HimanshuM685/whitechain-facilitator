@@ -61,6 +61,8 @@ export type PaymentRow = {
   gas_used: string | null;
   gas_cost_wei: string | null;
   latency_ms: number | null;
+  /** On-chain tag appended to the settlement transaction, e.g. `x402-payment-v1-1793918603937`. */
+  note: string | null;
   /** Opaque pagination cursor; pass back as `before`. */
   cursor: string;
 };
@@ -94,14 +96,15 @@ export async function logPayment(net: NetworkKey, row: PaymentInsert): Promise<v
     await db().query(
       `insert into ${table}
          (kind, ok, error_reason, network, scheme, asset, asset_symbol, payer, pay_to,
-          amount, resource, tx_hash, gas_used, gas_cost_wei, latency_ms)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+          amount, resource, tx_hash, gas_used, gas_cost_wei, latency_ms, note)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
        on conflict (tx_hash) where tx_hash is not null do update set
          ok           = excluded.ok or ${table}.ok,
          error_reason = case when excluded.ok or ${table}.ok then null else excluded.error_reason end,
          gas_used     = coalesce(excluded.gas_used, ${table}.gas_used),
          gas_cost_wei = coalesce(excluded.gas_cost_wei, ${table}.gas_cost_wei),
-         latency_ms   = coalesce(excluded.latency_ms, ${table}.latency_ms)`,
+         latency_ms   = coalesce(excluded.latency_ms, ${table}.latency_ms),
+         note         = coalesce(${table}.note, excluded.note)`,
       [
         row.kind,
         row.ok,
@@ -118,6 +121,7 @@ export async function logPayment(net: NetworkKey, row: PaymentInsert): Promise<v
         row.gas_used,
         row.gas_cost_wei,
         row.latency_ms,
+        row.note,
       ],
     );
   } catch (error) {
@@ -174,7 +178,7 @@ export async function listPayments(query: LogQuery): Promise<PaymentRow[]> {
 
   return (await db().query(
     `select id::text, created_at, kind, ok, error_reason, network, scheme, asset, asset_symbol,
-            payer, pay_to, amount::text, resource, tx_hash, gas_used::text, gas_cost_wei::text, latency_ms,
+            payer, pay_to, amount::text, resource, tx_hash, gas_used::text, gas_cost_wei::text, latency_ms, note,
             created_at::text || '_' || id::text as cursor
        from ${table}
        ${where}
