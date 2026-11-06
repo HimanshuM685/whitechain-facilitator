@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
+import { FadeIn, Reveal, Stagger, StaggerItem } from "@/components/motion";
 import { DOC_ENTRIES, docHref, docNeighbours, findDoc } from "@/lib/docs-nav";
 
 type Params = { slug?: string[] };
@@ -38,18 +39,24 @@ export default async function DocPage({ params }: { params: Promise<Params> }) {
 
   return (
     <article>
-      <header className="mb-10 border-b border-ink-line pb-8">
-        <p className="eyebrow appear appear--soft [--d:0.08s]">Documentation</p>
-        <h1 className="page-title mt-3 appear appear--soft [--d:0.16s]">{entry.title}</h1>
-        <p className="page-lede appear appear--soft [--d:0.26s]">{entry.summary}</p>
-      </header>
+      <Stagger gap={0.08} className="mb-10 border-b border-ink-line pb-8">
+        <StaggerItem>
+          <p className="eyebrow">Documentation</p>
+        </StaggerItem>
+        <StaggerItem>
+          <h1 className="page-title mt-3">{entry.title}</h1>
+        </StaggerItem>
+        <StaggerItem>
+          <p className="page-lede">{entry.summary}</p>
+        </StaggerItem>
+      </Stagger>
 
-      <div className="prose-docs max-w-none">
+      <FadeIn delay={0.25} className="prose-docs max-w-none">
         <Body />
-      </div>
+      </FadeIn>
 
       {(prev || next) && (
-        <nav className="mt-16 flex gap-3 border-t border-ink-line pt-6 text-sm">
+        <Reveal role="navigation" aria-label="Previous and next page" className="mt-16 flex gap-3 border-t border-ink-line pt-6 text-sm">
           {prev && (
             <Link
               href={docHref(prev.slug)}
@@ -66,7 +73,7 @@ export default async function DocPage({ params }: { params: Promise<Params> }) {
               {next.title} →
             </Link>
           )}
-        </nav>
+        </Reveal>
       )}
     </article>
   );

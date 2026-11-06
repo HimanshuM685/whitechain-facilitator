@@ -26,9 +26,7 @@ export default function TestPage() {
           </>
         }
       />
-      <div className="appear appear--soft [--d:0.42s]">
-        <TestPayment />
-      </div>
+      <TestPayment />
     </main>
   );
 }

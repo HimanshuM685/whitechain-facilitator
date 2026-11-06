@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { motion } from "motion/react";
 import { NETWORKS, type NetworkKey } from "@/lib/networks";
 import { useNetwork } from "./network-provider";
 
@@ -81,7 +82,13 @@ export function NetCode({
   const code = substitute(children.trim(), networkTokens(key));
 
   return (
-    <div className="glass my-4 overflow-hidden">
+    <motion.div
+      className="glass my-4 overflow-hidden"
+      initial={{ opacity: 0, y: 14 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "0px 0px -40px 0px" }}
+      transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+    >
       <div className="flex items-center justify-between gap-3 border-b border-ink-line px-3 py-1.5">
         <span className="font-mono text-[11px] text-chalk-dim">{filename ?? lang ?? "code"}</span>
         <CopyButton text={code} />
@@ -89,7 +96,7 @@ export function NetCode({
       <pre className="overflow-x-auto px-4 py-3 font-mono text-[13px] leading-relaxed text-chalk">
         <code>{code}</code>
       </pre>
-    </div>
+    </motion.div>
   );
 }
 

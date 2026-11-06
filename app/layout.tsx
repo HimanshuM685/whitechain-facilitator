@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import { NetworkProvider } from "@/components/network-provider";
+import { MotionProvider } from "@/components/motion";
 import { MotionSettle } from "@/components/motion-settle";
 import { MainnetBanner } from "@/components/network-switch";
 import { SiteFooter } from "@/components/site-footer";
@@ -45,10 +46,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* NetworkProvider reads useSearchParams, so it needs a Suspense boundary. */}
         <Suspense fallback={null}>
           <NetworkProvider defaultNetwork={DEFAULT_NETWORK}>
-            <MainnetBanner />
-            <SiteHeader />
-            {children}
-            <SiteFooter />
+            <MotionProvider>
+              <MainnetBanner />
+              <SiteHeader />
+              {children}
+              <SiteFooter />
+            </MotionProvider>
           </NetworkProvider>
         </Suspense>
       </body>

@@ -26,7 +26,21 @@ import type { PaymentPayload, PaymentRequired, PaymentRequirements } from "@x402
 import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { chainFor, tokenAbi } from "@/lib/chain";
 import { explorerTxUrl } from "@/lib/networks";
+import { AnimatePresence, motion } from "motion/react";
+import { EASE } from "./motion";
 import { useNetwork } from "./network-provider";
+
+// One entrance for everything that appears in the results panel.
+const appear = {
+  initial: { opacity: 0, y: 10, filter: "blur(4px)" },
+  animate: { opacity: 1, y: 0, filter: "blur(0px)" },
+  exit: { opacity: 0, y: -6 },
+  transition: { duration: 0.5, ease: EASE },
+} as const;
+const panel = {
+  hidden: { opacity: 0, y: 18, filter: "blur(6px)" },
+  show: { opacity: 1, y: 0, filter: "blur(0px)", transition: { duration: 0.7, ease: EASE } },
+};
 
 declare global {
   interface Window {
@@ -168,23 +182,30 @@ export function TestPayment() {
   const tx = [...steps].reverse().find((s) => s.label === "/settle")?.body as { transaction?: string } | undefined;
 
   return (
-    <div className="mt-8 grid gap-6 lg:grid-cols-2">
-      <section className="glass space-y-4 p-6">
+    <motion.div
+      className="mt-8 grid gap-6 lg:grid-cols-2"
+      initial="hidden"
+      animate="show"
+      variants={{ hidden: {}, show: { transition: { staggerChildren: 0.12, delayChildren: 0.25 } } }}
+    >
+      <motion.section variants={panel} className="glass space-y-4 p-6">
         <h2 className="eyebrow">1 · Wallet</h2>
+        <AnimatePresence mode="wait" initial={false}>
         {account ? (
-          <div className="space-y-1 font-mono text-xs">
+          <motion.div key="account" {...appear} className="space-y-1 font-mono text-xs">
             <div className="break-all">{account}</div>
             {balances && asset && (
               <div className="text-chalk-dim">
                 {formatUnits(balances.token, asset.decimals)} {asset.symbol} · {formatEther(balances.wbt)} WBT
               </div>
             )}
-          </div>
+          </motion.div>
         ) : (
-          <button className="btn btn-solid" onClick={connect} disabled={busy !== null}>
+          <motion.button whileTap={{ scale: 0.97 }} className="btn btn-solid" onClick={connect} disabled={busy !== null}>
             Connect wallet
-          </button>
+          </motion.button>
         )}
+        </AnimatePresence>
 
         <h2 className="pt-2 eyebrow">2 · Payment</h2>
         <label className="block space-y-1 text-xs text-chalk-dim">
@@ -207,15 +228,15 @@ export function TestPayment() {
         </label>
 
         <div className="flex flex-wrap gap-2 pt-2">
-          <button className={button} onClick={sign} disabled={!account || !asset || busy !== null}>
+          <motion.button whileTap={{ scale: 0.97 }} className={button} onClick={sign} disabled={!account || !asset || busy !== null}>
             {busy === "sign" ? "Signing…" : "Sign authorization"}
-          </button>
-          <button className={button} onClick={() => post("/verify")} disabled={!payload || busy !== null}>
+          </motion.button>
+          <motion.button whileTap={{ scale: 0.97 }} className={button} onClick={() => post("/verify")} disabled={!payload || busy !== null}>
             {busy === "/verify" ? "Verifying…" : "Verify"}
-          </button>
-          <button className="btn btn-solid" onClick={() => post("/settle")} disabled={!payload || busy !== null}>
+          </motion.button>
+          <motion.button whileTap={{ scale: 0.97 }} className="btn btn-solid" onClick={() => post("/settle")} disabled={!payload || busy !== null}>
             {busy === "/settle" ? "Settling…" : "Settle"}
-          </button>
+          </motion.button>
         </div>
 
         {!asset && (
@@ -228,24 +249,35 @@ export function TestPayment() {
             This wallet holds WBT. That works, but a zero-WBT wallet proves gas was sponsored.
           </p>
         )}
-        {error && <p className="text-xs break-words text-danger">{error}</p>}
-      </section>
+        <AnimatePresence>
+          {error && (
+            <motion.p key={error} {...appear} className="text-xs break-words text-danger">
+              {error}
+            </motion.p>
+          )}
+        </AnimatePresence>
+      </motion.section>
 
-      <section className="glass space-y-4 p-6">
+      <motion.section variants={panel} layout="size" className="glass space-y-4 p-6">
         <h2 className="eyebrow">3 · Results</h2>
-        {!payload && <p className="text-xs text-chalk-dim">Sign an authorization to begin. Signing costs nothing.</p>}
+        <AnimatePresence mode="popLayout">
+        {!payload && (
+          <motion.p key="empty" {...appear} className="text-xs text-chalk-dim">
+            Sign an authorization to begin. Signing costs nothing.
+          </motion.p>
+        )}
 
         {payload && (
-          <details className="text-xs">
+          <motion.details key="payload" {...appear} className="text-xs">
             <summary className="cursor-pointer text-chalk-dim">Signed payload</summary>
             <pre className="mt-2 max-h-64 overflow-auto rounded-lg border border-ink-line bg-black/60 p-3 font-mono text-[11px]">
               {JSON.stringify(payload.payment, null, 2)}
             </pre>
-          </details>
+          </motion.details>
         )}
 
         {steps.map((step, i) => (
-          <div key={i} className="text-xs">
+          <motion.div key={`step-${i}`} {...appear} className="text-xs">
             <div className="font-mono">
               <span className="text-white">{step.label}</span>{" "}
               <span className={step.status === 200 ? "text-mainnet" : "text-danger"}>{step.status}</span>{" "}
@@ -254,31 +286,34 @@ export function TestPayment() {
             <pre className="mt-1 max-h-64 overflow-auto rounded-lg border border-ink-line bg-black/60 p-3 font-mono text-[11px]">
               {JSON.stringify(step.body, null, 2)}
             </pre>
-          </div>
+          </motion.div>
         ))}
 
         {tx?.transaction && (
-          <a
+          <motion.a
+            key="tx"
+            {...appear}
             className="block font-mono text-xs break-all text-mainnet hover:underline"
             href={explorerTxUrl(key, tx.transaction)}
             target="_blank"
             rel="noreferrer"
           >
             {tx.transaction} ↗
-          </a>
+          </motion.a>
         )}
 
         {tx?.transaction && before && balances && asset && (
-          <div className="font-mono text-xs text-chalk-dim">
+          <motion.div key="diff" {...appear} className="font-mono text-xs text-chalk-dim">
             <div>
               {asset.symbol}: {formatUnits(balances.token - before.token, asset.decimals)}
             </div>
             <div className={balances.wbt === before.wbt ? "text-mainnet" : "text-danger"}>
               WBT: {formatEther(balances.wbt - before.wbt)} {balances.wbt === before.wbt && "(gas sponsored)"}
             </div>
-          </div>
+          </motion.div>
         )}
-      </section>
-    </div>
+        </AnimatePresence>
+      </motion.section>
+    </motion.div>
   );
 }

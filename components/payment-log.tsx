@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { formatEther, formatUnits } from "viem";
+import { AnimatePresence, motion } from "motion/react";
+import { EASE } from "./motion";
 import { useNetwork } from "./network-provider";
 
 type LogRow = {
@@ -119,8 +121,19 @@ export function PaymentLog() {
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
-              <tr key={row.id} className="border-t border-ink-line align-top">
+            {/* First load cascades in; each new settlement slides in at the top as it lands. */}
+            <AnimatePresence initial={true}>
+            {rows.map((row, index) => (
+              <motion.tr
+                key={row.id}
+                layout="position"
+                initial={{ opacity: 0, y: -8, backgroundColor: "rgba(255,255,255,0.06)" }}
+                animate={{ opacity: 1, y: 0, backgroundColor: "rgba(255,255,255,0)" }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.5, ease: EASE, delay: Math.min(index * 0.03, 0.45), backgroundColor: { duration: 1.6 } }}
+                whileHover={{ backgroundColor: "rgba(255,255,255,0.035)" }}
+                className="border-t border-ink-line align-top"
+              >
                 <td className="px-3 py-2.5 whitespace-nowrap text-chalk-dim" title={row.created_at}>
                   {relative(row.created_at)}
                 </td>
@@ -156,8 +169,9 @@ export function PaymentLog() {
                     </span>
                   )}
                 </td>
-              </tr>
+              </motion.tr>
             ))}
+            </AnimatePresence>
 
             {rows.length === 0 && (
               <tr>

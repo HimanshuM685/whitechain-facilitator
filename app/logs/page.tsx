@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { LiveStats } from "@/components/live-stats";
+import { Reveal } from "@/components/motion";
 import { PageHero } from "@/components/page-hero";
 import { PaymentLog } from "@/components/payment-log";
 
@@ -21,12 +22,12 @@ export default function LogsPage() {
         }
         lede="Each settlement carries an on-chain hash you can check yourself: the USDT goes straight from payer to merchant, and our signer pays the WBT fee."
       />
-      <section className="appear appear--soft [--d:0.42s]">
+      <Reveal delay={0.25}>
         <LiveStats />
-      </section>
-      <section className="mt-12 appear appear--soft [--d:0.52s]">
+      </Reveal>
+      <Reveal delay={0.35} className="mt-12">
         <PaymentLog />
-      </section>
+      </Reveal>
     </main>
   );
 }

@@ -1,17 +1,22 @@
 "use client";
 
+import { useId } from "react";
+import { LayoutGroup, motion } from "motion/react";
 import { NETWORK_KEYS } from "@/lib/networks";
 import { useNetwork } from "./network-provider";
 
 /** Segmented mainnet/testnet control in the liquid-metal style. The dot colour marks the network. */
 export function NetworkSwitch() {
   const { key, setNetwork } = useNetwork();
+  // The switch renders twice (header and phone menu); scope each underline.
+  const group = useId();
 
   return (
+    <LayoutGroup id={group}>
     <div
       role="radiogroup"
       aria-label="Network"
-      className="flex h-[var(--btn-h)] items-center gap-0.5 rounded-md border border-[rgba(198,198,198,0.45)] bg-[linear-gradient(135deg,rgba(255,255,255,0.08),rgba(0,0,0,0.5)_50%,rgba(160,175,200,0.06))] p-[3px]"
+      className="net-switch flex h-[var(--btn-h)] items-center gap-1"
     >
       {NETWORK_KEYS.map((candidate) => {
         const active = candidate === key;
@@ -24,18 +29,25 @@ export function NetworkSwitch() {
             aria-checked={active}
             onClick={() => setNetwork(candidate)}
             className={[
-              "flex h-full cursor-pointer items-center gap-1.5 rounded px-2.5 text-[12px] tracking-[-0.01em] transition-[background,color,box-shadow] duration-300",
-              active
-                ? "bg-[linear-gradient(105deg,#111_0%,#3a3a3a_45%,#6a6a6a_100%)] text-white shadow-[0_0_14px_rgba(200,210,230,0.16)]"
-                : "text-chalk-dim hover:text-white",
+              "net-switch-option relative flex h-full cursor-pointer items-center gap-1.5 px-2 text-[13px] tracking-[-0.01em]",
+              active ? "is-active" : "",
             ].join(" ")}
           >
             <span className={`size-1.5 rounded-full ${dot} ${active ? "" : "opacity-50"}`} />
             {candidate === "mainnet" ? "Mainnet" : "Sepolia"}
+            {active && (
+              <motion.span
+                layoutId="net-underline"
+                aria-hidden="true"
+                className="absolute right-2 bottom-1.5 left-2 h-px rounded-full bg-current opacity-60"
+                transition={{ type: "spring", stiffness: 420, damping: 34 }}
+              />
+            )}
           </button>
         );
       })}
     </div>
+    </LayoutGroup>
   );
 }
 
@@ -49,7 +61,7 @@ export function MainnetBanner() {
   if (!isMainnet) return null;
 
   return (
-    <div className="relative z-[60] border-b border-white/10 bg-[linear-gradient(90deg,#2a2a2a,#0a0a0a)] px-4 py-2 text-center text-xs text-[#f2f2f2]">
+    <div className="relative z-[60] border-b border-white/10 bg-[#111] px-4 py-2 text-center text-xs text-[#f2f2f2]">
       Mainnet selected — USDT is not gasless on Whitechain mainnet (no EIP-3009), so nothing settles here.
     </div>
   );

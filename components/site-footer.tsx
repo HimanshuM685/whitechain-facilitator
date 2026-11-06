@@ -1,6 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import { motion } from "motion/react";
 import { Logo } from "./logo";
 
 /** Shared footer. The home page is a single viewport with its own stats row, so it has none. */
@@ -8,7 +9,13 @@ export function SiteFooter() {
   if (usePathname() === "/") return null;
 
   return (
-    <footer className="relative z-[1] mt-24 border-t border-ink-line px-[var(--header-x)] py-8">
+    <motion.footer
+      initial={{ opacity: 0 }}
+      whileInView={{ opacity: 1 }}
+      viewport={{ once: true }}
+      transition={{ duration: 0.8 }}
+      className="relative z-[1] mt-24 border-t border-ink-line px-[var(--header-x)] py-8"
+    >
       <div className="flex flex-wrap items-center gap-x-6 gap-y-3 text-xs text-chalk-dim">
         <Logo className="!text-[14px]" />
         <span>Non-custodial. USDT moves payer to merchant; we only pay the WBT gas.</span>
@@ -22,6 +29,6 @@ export function SiteFooter() {
           Status
         </a>
       </div>
-    </footer>
+    </motion.footer>
   );
 }

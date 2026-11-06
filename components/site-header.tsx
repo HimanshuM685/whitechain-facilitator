@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { motion } from "motion/react";
 import { Logo } from "./logo";
 import { NetworkSwitch } from "./network-switch";
 
@@ -78,6 +79,14 @@ export function SiteHeader() {
               className={`pill appear ${link.appear} max-[900px]:h-14 max-[900px]:w-full max-[900px]:justify-center max-[900px]:rounded-[10px] max-[900px]:text-[19px]`}
             >
               {link.label}
+              {isActive(link.href) && (
+                <motion.span
+                  layoutId="nav-underline"
+                  aria-hidden="true"
+                  className="nav-underline"
+                  transition={{ type: "spring", stiffness: 420, damping: 36 }}
+                />
+              )}
             </Link>
           ))}
           <div className="mt-4 flex justify-center min-[901px]:hidden">
@@ -89,8 +98,9 @@ export function SiteHeader() {
           <div className="hidden min-[1100px]:block">
             <NetworkSwitch />
           </div>
-          <Link href="/docs/quickstart-merchant" className="btn btn-solid">
+          <Link href="/docs/quickstart-merchant" className="btn-text btn-text--strong header-cta">
             Start building
+            <svg className="btn-arrow" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8h9.5M8.5 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
           </Link>
         </div>
 
@@ -100,11 +110,11 @@ export function SiteHeader() {
           aria-expanded={open}
           aria-label={open ? "Close menu" : "Open menu"}
           onClick={() => setOpen((v) => !v)}
-          className="relative z-[80] grid size-[42px] cursor-pointer place-content-center gap-[5px] rounded-md border border-[var(--border)] bg-[rgba(8,8,8,0.55)] transition-colors hover:border-white/30 hover:bg-white/5 min-[901px]:hidden appear appear--scale [--d:0.34s]"
+          className="relative z-[80] grid size-[42px] cursor-pointer place-content-center gap-[5px] rounded-md bg-transparent text-[var(--top-fg)] transition-colors hover:bg-white/5 min-[901px]:hidden appear appear--scale [--d:0.34s]"
         >
-          <span className={`block h-[1.5px] w-4 rounded-[1px] bg-white transition-transform duration-250 ${open ? "translate-y-[6.5px] rotate-45" : ""}`} />
-          <span className={`block h-[1.5px] w-4 rounded-[1px] bg-white transition-opacity duration-200 ${open ? "opacity-0" : ""}`} />
-          <span className={`block h-[1.5px] w-4 rounded-[1px] bg-white transition-transform duration-250 ${open ? "-translate-y-[6.5px] -rotate-45" : ""}`} />
+          <span className={`block h-[1.5px] w-4 rounded-[1px] bg-current transition-transform duration-250 ${open ? "translate-y-[6.5px] rotate-45" : ""}`} />
+          <span className={`block h-[1.5px] w-4 rounded-[1px] bg-current transition-opacity duration-200 ${open ? "opacity-0" : ""}`} />
+          <span className={`block h-[1.5px] w-4 rounded-[1px] bg-current transition-transform duration-250 ${open ? "-translate-y-[6.5px] -rotate-45" : ""}`} />
         </button>
       </header>
     </>

@@ -19,11 +19,11 @@ export function Logo({ className = "" }: { className?: string }) {
     <Link
       href="/"
       aria-label="x402 Facilitator for Whitechain"
-      className={`inline-flex items-center gap-[9px] text-[length:var(--logo)] font-semibold tracking-[-0.03em] text-white ${className}`}
+      className={`inline-flex items-center gap-[9px] text-[length:var(--logo)] font-semibold tracking-[-0.03em] text-[var(--top-fg)] transition-colors duration-[1200ms] ${className}`}
     >
       <LogoMark className="size-[var(--logo-mark)] shrink-0" />
       <span>
-        x402<span className="font-normal text-chalk-dim">.whitechain</span>
+        x402<span className="font-normal opacity-60">.whitechain</span>
       </span>
     </Link>
   );

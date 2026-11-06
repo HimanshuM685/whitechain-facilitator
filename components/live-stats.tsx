@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
+import { EASE } from "./motion";
 import { useNetwork } from "./network-provider";
 
 type Window = {
@@ -148,31 +150,65 @@ export function LiveStats() {
               aria-checked={range === r.key}
               onClick={() => setRange(r.key)}
               className={[
-                "cursor-pointer rounded px-2.5 py-1 font-mono text-xs transition-colors",
-                range === r.key
-                  ? "bg-[linear-gradient(105deg,#111_0%,#3a3a3a_45%,#6a6a6a_100%)] text-white"
-                  : "text-chalk-dim hover:text-white",
+                "relative cursor-pointer rounded px-2.5 py-1 font-mono text-xs transition-colors",
+                range === r.key ? "text-white" : "text-chalk-dim hover:text-white",
               ].join(" ")}
             >
-              {r.label}
+              {range === r.key && (
+                <motion.span
+                  layoutId="range-active"
+                  aria-hidden="true"
+                  className="absolute inset-0 rounded bg-white/15"
+                  transition={{ type: "spring", stiffness: 420, damping: 34 }}
+                />
+              )}
+              <span className="relative">{r.label}</span>
             </button>
           ))}
         </div>
       </div>
 
-      <dl className="glass grid grid-cols-2 gap-px overflow-hidden bg-ink-line sm:grid-cols-3 lg:grid-cols-6">
+      <motion.dl
+        className="glass grid grid-cols-2 gap-px overflow-hidden bg-ink-line sm:grid-cols-3 lg:grid-cols-6"
+        initial="hidden"
+        whileInView="show"
+        viewport={{ once: true }}
+        variants={{ hidden: {}, show: { transition: { staggerChildren: 0.06 } } }}
+      >
         {tiles.map((tile) => (
-          <div key={tile.label} className="flex flex-col bg-black/70 px-4 py-4">
+          <motion.div
+            key={tile.label}
+            className="flex flex-col bg-black/70 px-4 py-4"
+            variants={{
+              hidden: { opacity: 0, y: 14, filter: "blur(6px)" },
+              show: { opacity: 1, y: 0, filter: "blur(0px)", transition: { duration: 0.6, ease: EASE } },
+            }}
+            whileHover={{ backgroundColor: "rgba(255,255,255,0.04)" }}
+          >
             <dt className="text-xs text-chalk-dim">{tile.label}</dt>
-            <dd className="mt-2 font-mono text-2xl tracking-tight text-chalk">{tile.value}</dd>
+            {/* New values roll in from below; the old one rolls out the top. */}
+            <dd className="relative mt-2 h-8 overflow-hidden font-mono text-2xl tracking-tight text-chalk">
+              <AnimatePresence mode="popLayout" initial={false}>
+                <motion.span
+                  key={tile.value}
+                  className="block"
+                  initial={{ y: "100%", opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  exit={{ y: "-100%", opacity: 0 }}
+                  transition={{ duration: 0.45, ease: EASE }}
+                >
+                  {tile.value}
+                </motion.span>
+              </AnimatePresence>
+            </dd>
             <dd className="mt-2 flex items-center justify-between gap-2 font-mono text-[11px]">
               {range === "all" ? <span className="text-chalk-dim">—</span> : <Delta pct={tile.pct} invert={tile.invert} />}
               <span className="text-chalk-dim">{period}</span>
             </dd>
             {tile.note && <dd className="mt-1 text-[11px] text-chalk-dim">{tile.note}</dd>}
-          </div>
+          </motion.div>
         ))}
-      </dl>
+      </motion.dl>
 
       <p className="mt-2 text-xs text-chalk-dim">
         {error
