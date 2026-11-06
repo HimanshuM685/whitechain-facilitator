@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
   const key = request.nextUrl.searchParams.get("network");
   const network = isNetworkKey(key) ? NETWORKS[key].caip2 : undefined;
   try {
-    const merchants = await listMerchants(network);
+    const merchants = await listMerchants({ network });
     refreshStale();
     return NextResponse.json({ merchants });
   } catch (error) {

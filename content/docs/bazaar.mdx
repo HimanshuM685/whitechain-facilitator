@@ -118,7 +118,7 @@ Call it again any time, say on deploy, to re-check everything. Rules:
 
 ## 3. Discover a merchant's endpoints
 
-Everything in the Bazaar is readable three ways: the official x402 client, plain HTTP, and the [Bazaar pages](/bazaar). Only verified endpoints are ever returned, and an endpoint disappears as soon as a re-check stops matching, so whatever you find, you can pay.
+Everything in the Bazaar is readable three ways: the official x402 client, plain HTTP, and the [Bazaar pages](/bazaar). Only endpoints that passed verification are returned. Re-checks run when an endpoint is paid (every 10th payment) and, for quiet endpoints, at most a day after the last check, triggered as the catalog is read. So a listing can lag a merchant's change by up to about a day. `lastUpdated` tells you when it was last verified, and the payment itself is checked live either way: the terms you sign come from the merchant's own `402`.
 
 ### With the official client
 
@@ -202,16 +202,46 @@ import { wrapFetchWithPaymentFromConfig } from "@x402/fetch";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { privateKeyToAccount } from "viem/accounts";
 
-type Bazaar = { info?: { input?: { method?: string; body?: unknown } } };
+type Input = {
+  method?: string;
+  queryParams?: Record<string, unknown>;
+  bodyType?: "json" | "form-data" | "text";
+  body?: unknown;
+};
+type Bazaar = { info?: { input?: Input } };
 
 const facilitator = withBazaar(new HTTPFacilitatorClient({ url: "{{facilitatorUrl}}" }));
-const { items } = await facilitator.extensions.bazaar.listResources({ payTo: "0xMerchantAddress" });
+
+// Always pin the network: the same merchant can sell on testnet and mainnet.
+const { items } = await facilitator.extensions.bazaar.listResources({
+  payTo: "0xMerchantAddress",
+  network: "{{caip2}}",
+});
 
 const endpoint = items.find((i) => i.resource.endsWith("/x402/top-up"));
 if (!endpoint) throw new Error("not listed");
 
-const terms = endpoint.accepts[0]!;
-const input = (endpoint.extensions?.bazaar as Bazaar | undefined)?.info?.input;
+const terms = endpoint.accepts.find((a) => a.network === "{{caip2}}")!;
+const input = (endpoint.extensions?.bazaar as Bazaar | undefined)?.info?.input ?? {};
+
+// Build the request the way the endpoint says it takes input.
+const url = new URL(endpoint.resource);
+for (const [k, v] of Object.entries(input.queryParams ?? {})) url.searchParams.set(k, String(v));
+
+const init: RequestInit = { method: input.method ?? "GET" };
+if (input.body !== undefined) {
+  if (input.bodyType === "form-data") {
+    const form = new FormData();
+    for (const [k, v] of Object.entries(input.body as Record<string, unknown>)) form.append(k, String(v));
+    init.body = form;
+  } else if (input.bodyType === "text") {
+    init.headers = { "content-type": "text/plain" };
+    init.body = String(input.body);
+  } else {
+    init.headers = { "content-type": "application/json" };
+    init.body = JSON.stringify(input.body);
+  }
+}
 
 const account = privateKeyToAccount(process.env.AGENT_PRIVATE_KEY as \`0x\${string}\`);
 const fetchWithPayment = wrapFetchWithPaymentFromConfig(fetch, {
@@ -221,11 +251,8 @@ const fetchWithPayment = wrapFetchWithPaymentFromConfig(fetch, {
   },
 });
 
-const response = await fetchWithPayment(endpoint.resource, {
-  method: input?.method ?? "GET",
-  ...(input?.body ? { headers: { "content-type": "application/json" }, body: JSON.stringify(input.body) } : {}),
-});
+const response = await fetchWithPayment(url, init);
 console.log(await response.json());`}
 </NetCode>
 
-Capping `maxAmountPerPayment` at the listed `amount` means the agent refuses to pay more than what the Bazaar showed, even if the merchant's price changes between discovery and the call. Every merchant page in the [Bazaar](/bazaar) has this snippet pre-filled per endpoint. More on paying in [pay for an endpoint](/docs/quickstart-agent).
+The example input from the listing is used as-is here; in a real agent, replace it with your own values in the same shape. Pinning `network` keeps a testnet agent from ever paying a mainnet listing, and capping `maxAmountPerPayment` at the listed `amount` means the agent refuses to pay more than what the Bazaar showed, even if the merchant's price changes between discovery and the call. Every merchant page in the [Bazaar](/bazaar) has this snippet pre-filled per endpoint. More on paying in [pay for an endpoint](/docs/quickstart-agent).

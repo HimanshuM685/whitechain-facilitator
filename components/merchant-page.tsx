@@ -70,13 +70,27 @@ function Block({ label, code }: { label: string; code: string }) {
   );
 }
 
-function agentSnippet(e: Endpoint): string {
+export function agentSnippet(e: Endpoint): string {
   const a = e.accepts[0];
-  const body = e.extensions?.bazaar?.info?.input?.body;
+  const input = e.extensions?.bazaar?.info?.input;
+  const query = input?.queryParams && typeof input.queryParams === "object" ? (input.queryParams as Record<string, unknown>) : null;
+  const target = query
+    ? `\`${e.resource}?\${new URLSearchParams(${json(Object.fromEntries(Object.entries(query).map(([k, v]) => [k, String(v)])))})}\``
+    : `"${e.resource}"`;
+  const body = input?.body;
+  // Encode the example body the way the endpoint declared it takes it.
+  const encoded =
+    input?.bodyType === "form-data"
+      ? `Object.entries(${json(body ?? {}).replace(/\n/g, "\n  ")}).reduce((form, [k, v]) => (form.append(k, String(v)), form), new FormData())`
+      : input?.bodyType === "text"
+        ? JSON.stringify(typeof body === "string" ? body : JSON.stringify(body ?? ""))
+        : `JSON.stringify(${body ? json(body).replace(/\n/g, "\n  ") : "{}"})`;
+  const contentType =
+    input?.bodyType === "form-data" ? "" : input?.bodyType === "text" ? "text/plain" : "application/json";
   const init =
     e.method === "GET"
       ? ""
-      : `, {\n  method: "${e.method}",\n  headers: { "content-type": "application/json" },\n  body: JSON.stringify(${body ? json(body).replace(/\n/g, "\n  ") : "{}"}),\n}`;
+      : `, {\n  method: "${e.method}",\n${contentType ? `  headers: { "content-type": "${contentType}" },\n` : ""}  body: ${encoded},\n}`;
   return `import { wrapFetchWithPaymentFromConfig } from "@x402/fetch";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { privateKeyToAccount } from "viem/accounts";
@@ -90,7 +104,7 @@ const fetchWithPayment = wrapFetchWithPaymentFromConfig(fetch, {
   },
 });
 
-const response = await fetchWithPayment("${e.resource}"${init});
+const response = await fetchWithPayment(${target}${init});
 console.log(await response.json());`;
 }
 

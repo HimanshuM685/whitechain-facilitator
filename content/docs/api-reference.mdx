@@ -218,7 +218,7 @@ A merchant's code declares its pay-to address and x402 endpoints. We call each o
 
 ## GET /api/bazaar
 
-Merchant cards behind the [Bazaar](/bazaar) page: one per pay-to address with at least one verified endpoint. `?network=testnet|mainnet` filters by network.
+Merchant cards behind the [Bazaar](/bazaar) page: one per pay-to address with at least one verified endpoint, up to 200, most-paid first. `?network=testnet|mainnet` filters by network. `networks` lists every network the merchant has a verified endpoint on (only the filtered one when `?network` is set).
 
 ```json
 {
@@ -228,7 +228,7 @@ Merchant cards behind the [Bazaar](/bazaar) page: one per pay-to address with at
       "name": "Acme",
       "website": "https://acme.example",
       "iconUrl": "https://acme.example/icon.png",
-      "network": "eip155:1874",
+      "networks": ["eip155:1874"],
       "endpointCount": 3,
       "settleCount": 41,
       "lastVerifiedAt": "2026-11-06T09:12:44.120Z"
@@ -239,7 +239,14 @@ Merchant cards behind the [Bazaar](/bazaar) page: one per pay-to address with at
 
 ## GET /api/bazaar/:payTo
 
-One merchant and all of its verified endpoints. Each endpoint has the same fields as a `/discovery/resources` item, plus `method`, `settleCount` and `verifiedAt`. `404` if the address has no verified endpoints.
+One merchant and its verified endpoints, up to 100, most-paid first. For more, page through `GET /discovery/resources?payTo=…`. Each endpoint has the same fields as a `/discovery/resources` item, plus `method`, `settleCount` and `verifiedAt`. The address may be in any letter case.
+
+| Status | When |
+| --- | --- |
+| `200` | Merchant found |
+| `400` | `:payTo` is not an address |
+| `404` | The address has no verified endpoints |
+| `503` | The catalog database is unreachable |
 
 ## GET /api/stats
 

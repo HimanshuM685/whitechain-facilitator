@@ -7,7 +7,8 @@ export const dynamic = "force-dynamic";
 /** GET /api/bazaar/0x… — one merchant and its verified endpoints. */
 export async function GET(_request: Request, { params }: { params: Promise<{ payTo: string }> }) {
   const { payTo } = await params;
-  if (!isAddress(payTo)) {
+  // Any letter case is fine; a checksum is not required to look a merchant up.
+  if (!isAddress(payTo, { strict: false })) {
     return NextResponse.json({ error: "bad_request", message: "Not an address." }, { status: 400 });
   }
   try {

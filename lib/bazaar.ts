@@ -33,6 +33,8 @@ const RECHECK_EVERY_SETTLES = 10;
 const RECHECK_AFTER_MS = 24 * 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 5_000;
 export const MAX_REGISTER_ENDPOINTS = 25;
+/** Most endpoints returned for one merchant (`GET /api/bazaar/:payTo`, the merchant page). */
+export const MAX_MERCHANT_ENDPOINTS = 100;
 
 /** Dev-only escape hatch so a merchant on http://localhost can be tested. Never set in production. */
 const ALLOW_PRIVATE = process.env.BAZAAR_ALLOW_PRIVATE_TARGETS === "true";
@@ -500,38 +502,52 @@ export type MerchantSummary = {
   name: string | null;
   website: string | null;
   iconUrl: string | null;
-  network: string | null;
+  /** Every network this merchant has a verified endpoint on. */
+  networks: string[];
   endpointCount: number;
   settleCount: number;
   lastVerifiedAt: string | null;
 };
 
-/** One card per merchant (pay-to) with at least one verified endpoint. */
-export async function listMerchants(network?: string): Promise<MerchantSummary[]> {
+/**
+ * One card per merchant (pay-to) with at least one verified endpoint.
+ * `payTo` narrows it to a single merchant in SQL, so the 200 cap never hides one.
+ */
+export async function listMerchants(filter: { network?: string; payTo?: string } = {}): Promise<MerchantSummary[]> {
   await ensureSchema();
+  const where = ["e.status = 'verified'"];
+  const params: unknown[] = [];
+  if (filter.network) {
+    params.push(filter.network);
+    where.push(`e.network = $${params.length}`);
+  }
+  if (filter.payTo) {
+    params.push(filter.payTo.toLowerCase());
+    where.push(`e.pay_to = $${params.length}`);
+  }
   const rows = (await db().query(
     `select e.pay_to,
             coalesce(m.name, max(e.service_name))       as name,
             coalesce(m.website, min(e.origin))          as website,
             max(e.icon_url)                             as icon_url,
-            min(e.network)                              as network,
+            array_agg(distinct e.network) filter (where e.network is not null) as networks,
             count(*)::int                               as endpoint_count,
             sum(e.settle_count)::int                    as settle_count,
             max(e.verified_at)                          as last_verified_at
        from bazaar_endpoints e
        left join bazaar_merchants m on m.pay_to = e.pay_to
-      where e.status = 'verified' ${network ? "and e.network = $1" : ""}
+      where ${where.join(" and ")}
       group by e.pay_to, m.name, m.website
       order by sum(e.settle_count) desc, max(e.verified_at) desc
       limit 200`,
-    network ? [network] : [],
+    params,
   )) as Record<string, unknown>[];
   return rows.map((r) => ({
     payTo: String(r.pay_to),
     name: (r.name as string | null) ?? null,
     website: (r.website as string | null) ?? null,
     iconUrl: (r.icon_url as string | null) ?? null,
-    network: (r.network as string | null) ?? null,
+    networks: (r.networks as string[] | null) ?? [],
     endpointCount: Number(r.endpoint_count ?? 0),
     settleCount: Number(r.settle_count ?? 0),
     lastVerifiedAt: (r.last_verified_at as string | null) ?? null,
@@ -541,8 +557,8 @@ export async function listMerchants(network?: string): Promise<MerchantSummary[]
 export async function getMerchant(payTo: string): Promise<{ merchant: MerchantSummary; endpoints: Row[] } | null> {
   const wanted = payTo.toLowerCase();
   const [merchants, { rows }] = await Promise.all([
-    listMerchants().then((all) => all.filter((m) => m.payTo === wanted)),
-    listVerified({ payTo: wanted, limit: 100, offset: 0 }),
+    listMerchants({ payTo: wanted }),
+    listVerified({ payTo: wanted, limit: MAX_MERCHANT_ENDPOINTS, offset: 0 }),
   ]);
   if (!merchants[0] || rows.length === 0) return null;
   return { merchant: merchants[0], endpoints: rows };
