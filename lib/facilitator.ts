@@ -25,7 +25,6 @@ import { facilitatorSignerFor, publicClientFor } from "./chain";
 import { logPayment } from "./db";
 import { config } from "./guards";
 import { findAsset, NETWORK_KEYS, NETWORKS, networkByCaip2, type NetworkKey } from "./networks";
-import { settlementNote, withNote } from "./note";
 import { safeErrorMessage } from "./redact";
 
 /** Shared fields pulled out of a payload for the log, minus anything replayable. */
@@ -63,48 +62,22 @@ async function receiptCost(net: NetworkKey, txHash: string) {
 
 const NO_COST = { gas_used: null, gas_cost_wei: null };
 
-/** EIP-3009 authorization nonce of a payload — the key that links a broadcast to its log row. */
-const nonceOf = (payload: PaymentPayload): string | undefined =>
-  (payload.payload as { authorization?: { nonce?: string } }).authorization?.nonce?.toLowerCase();
-
 function build(net: NetworkKey): x402Facilitator {
   const facilitator = new x402Facilitator();
 
   const signer = facilitatorSignerFor(net);
 
-  // Note written into each broadcast, keyed by authorization nonce until the
-  // logging hook picks it up.
-  // ponytail: per-instance memory; an entry whose settle never reaches a hook
-  // (the library always calls one) would linger until restart.
-  const notes = new Map<string, string>();
-  const takeNote = (payload: PaymentPayload) => {
-    const nonce = nonceOf(payload);
-    if (nonce === undefined) return null;
-    const note = notes.get(nonce) ?? null;
-    notes.delete(nonce);
-    return note;
-  };
-
   registerExactEvmScheme(facilitator, {
     signer: {
       ...signer,
-      writeContract: (args) => {
-        // Tag the transaction on-chain: `x402-payment-v1-<ms>` as a calldata
-        // suffix (see lib/note.ts). Any suffix the library supplied stays first.
-        const note = settlementNote();
-        // transferWithAuthorization(from, to, value, validAfter, validBefore, nonce, ...)
-        const nonce = args.args?.[5];
-        if (typeof nonce === "string") notes.set(nonce.toLowerCase(), note);
-
-        return signer.writeContract({
+      // Hard gas ceiling on every settlement (MAX_SETTLE_GAS). Without it viem
+      // uses its own estimate, so a token upgrade or pathological transfer
+      // could burn any amount of our WBT. An EIP-3009 transfer uses 70–90k.
+      writeContract: (args) =>
+        signer.writeContract({
           ...args,
-          dataSuffix: withNote(args.dataSuffix, note),
-          // Hard gas ceiling on every settlement (MAX_SETTLE_GAS). Without it viem
-          // uses its own estimate, so a token upgrade or pathological transfer
-          // could burn any amount of our WBT. An EIP-3009 transfer uses 70–90k.
           gas: args.gas !== undefined && args.gas < config.maxSettleGas ? args.gas : config.maxSettleGas,
-        });
-      },
+        }),
     },
     networks: NETWORKS[net].caip2,
     // Re-simulate inside settle so a payment that would revert on-chain is
@@ -134,7 +107,6 @@ function build(net: NetworkKey): x402Facilitator {
         error_reason: result.errorReason ?? null,
         payer: result.payer ?? null,
         tx_hash: result.transaction || null,
-        note: takeNote(paymentPayload),
         latency_ms: latency,
         ...cost,
         ...describe(paymentPayload, requirements, net),
@@ -151,7 +123,6 @@ function build(net: NetworkKey): x402Facilitator {
         // Public address from the authorization; nothing replayable.
         payer: (paymentPayload.payload as { authorization?: { from?: string } }).authorization?.from ?? null,
         tx_hash: null,
-        note: takeNote(paymentPayload),
         latency_ms: elapsed(paymentPayload),
         ...NO_COST,
         ...describe(paymentPayload, requirements, net),

@@ -30,8 +30,6 @@ export const schemaFor = (table: string): string[] => [
     gas_cost_wei  numeric(78, 0),
     latency_ms    integer
   )`,
-  // On-chain tag of the settlement (`x402-payment-v1-<ms>`, see lib/note.ts).
-  `alter table ${table} add column if not exists note text`,
   // Keyset pagination for the public log orders by (created_at, id).
   `create index if not exists ${table}_created_id_idx on ${table} (created_at desc, id desc)`,
   `create index if not exists ${table}_payer_idx on ${table} (payer)`,
