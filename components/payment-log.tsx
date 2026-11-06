@@ -82,11 +82,11 @@ export function PaymentLog() {
             value={filter}
             onChange={(event) => setFilter(event.target.value)}
             placeholder="Filter by payer or merchant address"
-            className="w-72 rounded-lg border border-ink-line bg-ink-raised px-3 py-2 font-mono text-xs text-chalk placeholder:text-chalk-dim focus:border-accent focus:outline-none"
+            className="field w-72"
           />
           <button
             type="submit"
-            className="rounded-lg border border-ink-line bg-ink-raised px-3 py-2 text-xs text-chalk-dim hover:text-chalk"
+            className="btn btn-ghost"
           >
             Filter
           </button>
@@ -106,9 +106,9 @@ export function PaymentLog() {
 
       </div>
 
-      <div className="mt-4 overflow-x-auto rounded-xl border border-ink-line">
+      <div className="glass mt-4 overflow-x-auto">
         <table className="w-full min-w-[56rem] text-left text-sm">
-          <thead className="bg-ink-raised font-mono text-[11px] tracking-wide text-chalk-dim uppercase">
+          <thead className="border-b border-ink-line font-mono text-[11px] tracking-wide text-chalk-dim uppercase">
             <tr>
               <th className="px-3 py-2.5 font-normal">When</th>
               <th className="px-3 py-2.5 font-normal">Payer</th>

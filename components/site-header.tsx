@@ -1,36 +1,112 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { Logo } from "./logo";
 import { NetworkSwitch } from "./network-switch";
 
 const LINKS = [
-  { href: "/docs", label: "Docs" },
-  { href: "/logs", label: "Transactions" },
-  { href: "/test", label: "Test" },
-  { href: "/supported", label: "API" },
+  { href: "/docs", label: "Docs", appear: "appear--scale", d: "0.16s" },
+  { href: "/logs", label: "Transactions", appear: "appear--soft", d: "0.28s" },
+  { href: "/test", label: "Test a payment", appear: "appear--scale", d: "0.40s" },
+  { href: "/supported", label: "API", appear: "appear--soft", d: "0.52s" },
 ];
 
+/**
+ * Three-column header: logo · liquid-metal nav · network switch + CTA.
+ * Under 901px the nav becomes a full-screen blurred menu behind a burger.
+ */
 export function SiteHeader() {
-  return (
-    <header className="sticky top-0 z-20 border-b border-ink-line bg-ink/85 backdrop-blur">
-      <div className="mx-auto flex max-w-6xl items-center gap-4 px-4 py-3">
-        <Link href="/" className="flex items-center gap-2.5 font-mono text-sm">
-          <span className="inline-block size-2 rounded-full bg-accent shadow-[0_0_12px] shadow-accent/60" />
-          <span className="font-semibold tracking-tight">x402 · whitechain</span>
-        </Link>
+  const pathname = usePathname();
+  const [open, setOpen] = useState(false);
+  const close = useCallback(() => setOpen(false), []);
 
-        <nav className="ml-auto flex items-center gap-1">
+  // Close on navigation, Escape, and when the viewport grows back to desktop.
+  useEffect(close, [pathname, close]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && close();
+    const desktop = window.matchMedia("(min-width: 901px)");
+    const onResize = (e: MediaQueryListEvent) => e.matches && close();
+    document.addEventListener("keydown", onKey);
+    desktop.addEventListener("change", onResize);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      desktop.removeEventListener("change", onResize);
+    };
+  }, [close]);
+  useEffect(() => {
+    document.body.classList.toggle("menu-open", open);
+  }, [open]);
+
+  const isActive = (href: string) => (href === "/docs" ? pathname.startsWith("/docs") : pathname === href);
+
+  return (
+    <>
+      <div
+        aria-hidden="true"
+        onClick={close}
+        className={[
+          "fixed inset-0 z-40 bg-[rgba(8,8,8,0.42)] transition-[opacity,visibility,backdrop-filter] duration-300 min-[901px]:hidden",
+          open ? "visible opacity-100 backdrop-blur-[24px]" : "invisible opacity-0",
+        ].join(" ")}
+      />
+
+      <header
+        className="relative z-50 grid grid-cols-[1fr_auto_auto] items-center gap-2 px-[var(--header-x)] pt-[max(var(--header-y),env(safe-area-inset-top))] pb-2.5 min-[901px]:grid-cols-[1fr_auto_1fr] min-[901px]:gap-4"
+      >
+        <Logo className="relative z-[80] justify-self-start appear appear--scale [--d:0.08s]" />
+
+        <nav
+          id="site-nav"
+          aria-label="Primary"
+          className={[
+            // Desktop: centred row of pills.
+            "min-[901px]:static min-[901px]:visible min-[901px]:flex min-[901px]:flex-row min-[901px]:items-center min-[901px]:gap-2 min-[901px]:p-0 min-[901px]:opacity-100",
+            // Phone: full-viewport column over the blurred backdrop.
+            "fixed inset-0 z-[45] flex flex-col items-stretch justify-center gap-3 px-[22px] pt-[max(96px,calc(env(safe-area-inset-top)+88px))] pb-8 transition-[opacity,visibility] duration-300",
+            open ? "visible opacity-100" : "invisible opacity-0",
+          ].join(" ")}
+        >
           {LINKS.map((link) => (
             <Link
               key={link.href}
               href={link.href}
-              className="rounded-md px-2.5 py-1.5 text-sm text-chalk-dim transition-colors hover:bg-ink-raised hover:text-chalk"
+              aria-current={isActive(link.href) ? "page" : undefined}
+              onClick={close}
+              style={{ ["--d" as string]: link.d }}
+              className={`pill appear ${link.appear} max-[900px]:h-14 max-[900px]:w-full max-[900px]:justify-center max-[900px]:rounded-[10px] max-[900px]:text-[19px]`}
             >
               {link.label}
             </Link>
           ))}
+          <div className="mt-4 flex justify-center min-[901px]:hidden">
+            <NetworkSwitch />
+          </div>
         </nav>
 
-        <NetworkSwitch />
-      </div>
-    </header>
+        <div className="relative z-[80] flex items-center justify-self-end gap-2 appear appear--scale [--d:0.34s]">
+          <div className="hidden min-[1100px]:block">
+            <NetworkSwitch />
+          </div>
+          <Link href="/docs/quickstart-merchant" className="btn btn-solid">
+            Start building
+          </Link>
+        </div>
+
+        <button
+          type="button"
+          aria-controls="site-nav"
+          aria-expanded={open}
+          aria-label={open ? "Close menu" : "Open menu"}
+          onClick={() => setOpen((v) => !v)}
+          className="relative z-[80] grid size-[42px] cursor-pointer place-content-center gap-[5px] rounded-md border border-[var(--border)] bg-[rgba(8,8,8,0.55)] transition-colors hover:border-white/30 hover:bg-white/5 min-[901px]:hidden appear appear--scale [--d:0.34s]"
+        >
+          <span className={`block h-[1.5px] w-4 rounded-[1px] bg-white transition-transform duration-250 ${open ? "translate-y-[6.5px] rotate-45" : ""}`} />
+          <span className={`block h-[1.5px] w-4 rounded-[1px] bg-white transition-opacity duration-200 ${open ? "opacity-0" : ""}`} />
+          <span className={`block h-[1.5px] w-4 rounded-[1px] bg-white transition-transform duration-250 ${open ? "-translate-y-[6.5px] -rotate-45" : ""}`} />
+        </button>
+      </header>
+    </>
   );
 }

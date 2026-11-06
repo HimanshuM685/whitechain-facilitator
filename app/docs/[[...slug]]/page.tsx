@@ -38,9 +38,10 @@ export default async function DocPage({ params }: { params: Promise<Params> }) {
 
   return (
     <article>
-      <header className="mb-8 border-b border-ink-line pb-6">
-        <h1 className="text-3xl font-semibold tracking-tight">{entry.title}</h1>
-        <p className="mt-2 text-chalk-dim">{entry.summary}</p>
+      <header className="mb-10 border-b border-ink-line pb-8">
+        <p className="eyebrow appear appear--soft [--d:0.08s]">Documentation</p>
+        <h1 className="page-title mt-3 appear appear--soft [--d:0.16s]">{entry.title}</h1>
+        <p className="page-lede appear appear--soft [--d:0.26s]">{entry.summary}</p>
       </header>
 
       <div className="prose-docs max-w-none">
@@ -52,7 +53,7 @@ export default async function DocPage({ params }: { params: Promise<Params> }) {
           {prev && (
             <Link
               href={docHref(prev.slug)}
-              className="rounded-lg border border-ink-line bg-ink-raised px-4 py-3 text-chalk-dim transition-colors hover:text-chalk"
+              className="btn btn-ghost h-auto py-3"
             >
               ← {prev.title}
             </Link>
@@ -60,7 +61,7 @@ export default async function DocPage({ params }: { params: Promise<Params> }) {
           {next && (
             <Link
               href={docHref(next.slug)}
-              className="ml-auto rounded-lg border border-ink-line bg-ink-raised px-4 py-3 text-right text-chalk-dim transition-colors hover:text-chalk"
+              className="btn btn-ghost ml-auto h-auto py-3"
             >
               {next.title} →
             </Link>

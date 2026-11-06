@@ -37,10 +37,8 @@ declare global {
 type Balances = { wbt: bigint; token: bigint };
 type Step = { label: string; status: number | null; ms: number; body: unknown };
 
-const field =
-  "w-full rounded-lg border border-ink-line bg-ink px-3 py-2 font-mono text-xs text-chalk placeholder:text-chalk-dim focus:border-accent focus:outline-none";
-const button =
-  "rounded-lg border border-ink-line bg-ink-raised px-3 py-2 text-xs text-chalk hover:border-accent disabled:cursor-not-allowed disabled:opacity-40";
+const field = "field";
+const button = "btn btn-ghost";
 
 export function TestPayment() {
   const { key, net } = useNetwork();
@@ -171,8 +169,8 @@ export function TestPayment() {
 
   return (
     <div className="mt-8 grid gap-6 lg:grid-cols-2">
-      <section className="space-y-4 rounded-xl border border-ink-line bg-ink-raised p-5">
-        <h2 className="font-mono text-xs tracking-wide text-chalk-dim uppercase">1 · Wallet</h2>
+      <section className="glass space-y-4 p-6">
+        <h2 className="eyebrow">1 · Wallet</h2>
         {account ? (
           <div className="space-y-1 font-mono text-xs">
             <div className="break-all">{account}</div>
@@ -183,12 +181,12 @@ export function TestPayment() {
             )}
           </div>
         ) : (
-          <button className={button} onClick={connect} disabled={busy !== null}>
+          <button className="btn btn-solid" onClick={connect} disabled={busy !== null}>
             Connect wallet
           </button>
         )}
 
-        <h2 className="pt-2 font-mono text-xs tracking-wide text-chalk-dim uppercase">2 · Payment</h2>
+        <h2 className="pt-2 eyebrow">2 · Payment</h2>
         <label className="block space-y-1 text-xs text-chalk-dim">
           Asset
           <select className={field} value={assetAddress} onChange={(e) => setAssetAddress(e.target.value as `0x${string}`)}>
@@ -215,7 +213,7 @@ export function TestPayment() {
           <button className={button} onClick={() => post("/verify")} disabled={!payload || busy !== null}>
             {busy === "/verify" ? "Verifying…" : "Verify"}
           </button>
-          <button className={button} onClick={() => post("/settle")} disabled={!payload || busy !== null}>
+          <button className="btn btn-solid" onClick={() => post("/settle")} disabled={!payload || busy !== null}>
             {busy === "/settle" ? "Settling…" : "Settle"}
           </button>
         </div>
@@ -233,14 +231,14 @@ export function TestPayment() {
         {error && <p className="text-xs break-words text-danger">{error}</p>}
       </section>
 
-      <section className="space-y-4 rounded-xl border border-ink-line bg-ink-raised p-5">
-        <h2 className="font-mono text-xs tracking-wide text-chalk-dim uppercase">3 · Results</h2>
+      <section className="glass space-y-4 p-6">
+        <h2 className="eyebrow">3 · Results</h2>
         {!payload && <p className="text-xs text-chalk-dim">Sign an authorization to begin. Signing costs nothing.</p>}
 
         {payload && (
           <details className="text-xs">
             <summary className="cursor-pointer text-chalk-dim">Signed payload</summary>
-            <pre className="mt-2 max-h-64 overflow-auto rounded-lg bg-ink p-3 font-mono text-[11px]">
+            <pre className="mt-2 max-h-64 overflow-auto rounded-lg border border-ink-line bg-black/60 p-3 font-mono text-[11px]">
               {JSON.stringify(payload.payment, null, 2)}
             </pre>
           </details>
@@ -249,11 +247,11 @@ export function TestPayment() {
         {steps.map((step, i) => (
           <div key={i} className="text-xs">
             <div className="font-mono">
-              <span className="text-accent">{step.label}</span>{" "}
+              <span className="text-white">{step.label}</span>{" "}
               <span className={step.status === 200 ? "text-mainnet" : "text-danger"}>{step.status}</span>{" "}
               <span className="text-chalk-dim">{step.ms}ms</span>
             </div>
-            <pre className="mt-1 max-h-64 overflow-auto rounded-lg bg-ink p-3 font-mono text-[11px]">
+            <pre className="mt-1 max-h-64 overflow-auto rounded-lg border border-ink-line bg-black/60 p-3 font-mono text-[11px]">
               {JSON.stringify(step.body, null, 2)}
             </pre>
           </div>

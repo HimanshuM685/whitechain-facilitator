@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { PageHero } from "@/components/page-hero";
 import { TestPayment } from "@/components/test-payment";
 
 export const metadata: Metadata = {
@@ -8,15 +9,26 @@ export const metadata: Metadata = {
 
 export default function TestPage() {
   return (
-    <main className="mx-auto max-w-6xl px-4 py-12">
-      <h1 className="text-3xl font-semibold tracking-tight">Test a payment</h1>
-      <p className="mt-3 max-w-2xl text-chalk-dim">
-        Your wallet signs an EIP-3009 authorization. It does not send a transaction. The signed payload goes to{" "}
-        <code className="font-mono text-chalk">/verify</code> and <code className="font-mono text-chalk">/settle</code>{" "}
-        on this facilitator, which submits it and pays the WBT gas. Paying yourself is the easiest test: your token
-        balance stays the same and your WBT doesn&apos;t move.
-      </p>
-      <TestPayment />
+    <main className="relative z-[1] mx-auto max-w-6xl px-5 py-12">
+      <PageHero
+        badge="Live on Whitechain Sepolia"
+        title={
+          <>
+            Test a <em className="serif-em">real payment</em> in your browser.
+          </>
+        }
+        lede={
+          <>
+            Your wallet signs a USDT authorization. It never sends a transaction. We run it through{" "}
+            <code className="font-mono text-[0.9em] text-white">/verify</code> and{" "}
+            <code className="font-mono text-[0.9em] text-white">/settle</code>, submit it on-chain and pay the gas.
+            Paying yourself is the easiest test: your USDT stays put and your WBT never moves.
+          </>
+        }
+      />
+      <div className="appear appear--soft [--d:0.42s]">
+        <TestPayment />
+      </div>
     </main>
   );
 }

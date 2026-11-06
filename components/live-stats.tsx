@@ -138,7 +138,7 @@ export function LiveStats() {
         <div
           role="radiogroup"
           aria-label="Time range"
-          className="ml-auto flex items-center gap-0.5 rounded-lg border border-ink-line bg-ink-raised p-0.5"
+          className="ml-auto flex items-center gap-0.5 rounded-md border border-[rgba(198,198,198,0.45)] bg-black/50 p-[3px]"
         >
           {RANGES.map((r) => (
             <button
@@ -148,8 +148,10 @@ export function LiveStats() {
               aria-checked={range === r.key}
               onClick={() => setRange(r.key)}
               className={[
-                "rounded-md px-2.5 py-1 font-mono text-xs transition-colors",
-                range === r.key ? "bg-ink text-accent" : "text-chalk-dim hover:text-chalk",
+                "cursor-pointer rounded px-2.5 py-1 font-mono text-xs transition-colors",
+                range === r.key
+                  ? "bg-[linear-gradient(105deg,#111_0%,#3a3a3a_45%,#6a6a6a_100%)] text-white"
+                  : "text-chalk-dim hover:text-white",
               ].join(" ")}
             >
               {r.label}
@@ -158,9 +160,9 @@ export function LiveStats() {
         </div>
       </div>
 
-      <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-ink-line bg-ink-line sm:grid-cols-3 lg:grid-cols-6">
+      <dl className="glass grid grid-cols-2 gap-px overflow-hidden bg-ink-line sm:grid-cols-3 lg:grid-cols-6">
         {tiles.map((tile) => (
-          <div key={tile.label} className="flex flex-col bg-ink-raised px-4 py-4">
+          <div key={tile.label} className="flex flex-col bg-black/70 px-4 py-4">
             <dt className="text-xs text-chalk-dim">{tile.label}</dt>
             <dd className="mt-2 font-mono text-2xl tracking-tight text-chalk">{tile.value}</dd>
             <dd className="mt-2 flex items-center justify-between gap-2 font-mono text-[11px]">

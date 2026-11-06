@@ -1,9 +1,9 @@
 "use client";
 
-import { NETWORK_KEYS, NETWORKS } from "@/lib/networks";
+import { NETWORK_KEYS } from "@/lib/networks";
 import { useNetwork } from "./network-provider";
 
-/** Segmented mainnet/testnet control. Mainnet is tinted differently on purpose. */
+/** Segmented mainnet/testnet control in the liquid-metal style. The dot colour marks the network. */
 export function NetworkSwitch() {
   const { key, setNetwork } = useNetwork();
 
@@ -11,11 +11,11 @@ export function NetworkSwitch() {
     <div
       role="radiogroup"
       aria-label="Network"
-      className="flex items-center gap-0.5 rounded-lg border border-ink-line bg-ink-raised p-0.5"
+      className="flex h-[var(--btn-h)] items-center gap-0.5 rounded-md border border-[rgba(198,198,198,0.45)] bg-[linear-gradient(135deg,rgba(255,255,255,0.08),rgba(0,0,0,0.5)_50%,rgba(160,175,200,0.06))] p-[3px]"
     >
       {NETWORK_KEYS.map((candidate) => {
         const active = candidate === key;
-        const tint = candidate === "mainnet" ? "text-mainnet" : "text-testnet";
+        const dot = candidate === "mainnet" ? "bg-mainnet" : "bg-testnet";
         return (
           <button
             key={candidate}
@@ -24,12 +24,14 @@ export function NetworkSwitch() {
             aria-checked={active}
             onClick={() => setNetwork(candidate)}
             className={[
-              "rounded-md px-2.5 py-1 font-mono text-xs transition-colors",
-              active ? `bg-ink ${tint}` : "text-chalk-dim hover:text-chalk",
+              "flex h-full cursor-pointer items-center gap-1.5 rounded px-2.5 text-[12px] tracking-[-0.01em] transition-[background,color,box-shadow] duration-300",
+              active
+                ? "bg-[linear-gradient(105deg,#111_0%,#3a3a3a_45%,#6a6a6a_100%)] text-white shadow-[0_0_14px_rgba(200,210,230,0.16)]"
+                : "text-chalk-dim hover:text-white",
             ].join(" ")}
           >
-            {candidate}
-            <span className="ml-1.5 opacity-50">{NETWORKS[candidate].chainId}</span>
+            <span className={`size-1.5 rounded-full ${dot} ${active ? "" : "opacity-50"}`} />
+            {candidate === "mainnet" ? "Mainnet" : "Sepolia"}
           </button>
         );
       })}
@@ -47,7 +49,7 @@ export function MainnetBanner() {
   if (!isMainnet) return null;
 
   return (
-    <div className="border-b border-mainnet/25 bg-mainnet/10 px-4 py-2 text-center text-xs text-mainnet">
+    <div className="relative z-[60] border-b border-white/10 bg-[linear-gradient(90deg,#2a2a2a,#0a0a0a)] px-4 py-2 text-center text-xs text-[#f2f2f2]">
       Mainnet selected — USDT is not gasless on Whitechain mainnet (no EIP-3009), so nothing settles here.
     </div>
   );

@@ -1,22 +1,32 @@
 import type { Metadata } from "next";
+import { LiveStats } from "@/components/live-stats";
+import { PageHero } from "@/components/page-hero";
 import { PaymentLog } from "@/components/payment-log";
 
 export const metadata: Metadata = {
-  title: "Transaction log",
+  title: "Transactions",
   description:
     "Every x402 payment this facilitator has settled on Whitechain, with explorer links and the WBT gas sponsored for each.",
 };
 
 export default function LogsPage() {
   return (
-    <main className="mx-auto max-w-6xl px-4 py-12">
-      <h1 className="text-3xl font-semibold tracking-tight">Transaction log</h1>
-      <p className="mt-3 max-w-2xl text-chalk-dim">
-        Every payment this facilitator has handled, per network. Settlements carry an on-chain hash you can
-        check yourself: the token transfer goes payer to merchant, while the transaction fee is paid by our
-        signer.
-      </p>
-      <PaymentLog />
+    <main className="relative z-[1] mx-auto max-w-6xl px-5 py-12">
+      <PageHero
+        badge="Public settlement log"
+        title={
+          <>
+            Every payment, <em className="serif-em">on the record.</em>
+          </>
+        }
+        lede="Each settlement carries an on-chain hash you can check yourself: the USDT goes straight from payer to merchant, and our signer pays the WBT fee."
+      />
+      <section className="appear appear--soft [--d:0.42s]">
+        <LiveStats />
+      </section>
+      <section className="mt-12 appear appear--soft [--d:0.52s]">
+        <PaymentLog />
+      </section>
     </main>
   );
 }

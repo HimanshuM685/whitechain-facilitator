@@ -56,7 +56,7 @@ function CopyButton({ text }: { text: string }) {
         setCopied(true);
         setTimeout(() => setCopied(false), 1400);
       }}
-      className="rounded-md border border-ink-line bg-ink px-2 py-1 font-mono text-[11px] text-chalk-dim transition-colors hover:text-chalk"
+      className="cursor-pointer rounded-md border border-[rgba(198,198,198,0.35)] bg-black/50 px-2 py-1 font-mono text-[11px] text-chalk-dim transition-colors hover:border-[rgba(220,230,255,0.7)] hover:text-white"
     >
       {copied ? "copied" : "copy"}
     </button>
@@ -81,7 +81,7 @@ export function NetCode({
   const code = substitute(children.trim(), networkTokens(key));
 
   return (
-    <div className="my-4 overflow-hidden rounded-xl border border-ink-line bg-ink-raised">
+    <div className="glass my-4 overflow-hidden">
       <div className="flex items-center justify-between gap-3 border-b border-ink-line px-3 py-1.5">
         <span className="font-mono text-[11px] text-chalk-dim">{filename ?? lang ?? "code"}</span>
         <CopyButton text={code} />
