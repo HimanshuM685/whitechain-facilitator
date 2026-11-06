@@ -47,7 +47,7 @@ export function NetVal({ k, mono = true }: { k: string; mono?: boolean }) {
   return <span className={mono ? "font-mono text-[0.85em] text-chalk" : undefined}>{value}</span>;
 }
 
-function CopyButton({ text }: { text: string }) {
+export function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <button

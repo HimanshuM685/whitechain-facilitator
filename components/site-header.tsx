@@ -9,9 +9,10 @@ import { NetworkSwitch } from "./network-switch";
 
 const LINKS = [
   { href: "/docs", label: "Docs", appear: "appear--scale", d: "0.16s" },
-  { href: "/logs", label: "Transactions", appear: "appear--soft", d: "0.28s" },
-  { href: "/test", label: "Test a payment", appear: "appear--scale", d: "0.40s" },
-  { href: "/supported", label: "API", appear: "appear--soft", d: "0.52s" },
+  { href: "/bazaar", label: "Bazaar", appear: "appear--soft", d: "0.24s" },
+  { href: "/logs", label: "Transactions", appear: "appear--scale", d: "0.32s" },
+  { href: "/test", label: "Test a payment", appear: "appear--soft", d: "0.40s" },
+  { href: "/supported", label: "API", appear: "appear--scale", d: "0.52s" },
 ];
 
 /**
@@ -40,7 +41,8 @@ export function SiteHeader() {
     document.body.classList.toggle("menu-open", open);
   }, [open]);
 
-  const isActive = (href: string) => (href === "/docs" ? pathname.startsWith("/docs") : pathname === href);
+  const isActive = (href: string) =>
+    href === "/docs" || href === "/bazaar" ? pathname.startsWith(href) : pathname === href;
 
   return (
     <>

@@ -9,7 +9,7 @@
 
 import { neon, type NeonQueryFunction } from "@neondatabase/serverless";
 import { NETWORK_KEYS, NETWORKS, type NetworkKey } from "./networks";
-import { schemaFor } from "./schema";
+import { bazaarSchema, schemaFor } from "./schema";
 
 let cached: NeonQueryFunction<false, false> | undefined;
 
@@ -34,6 +34,7 @@ export function ensureSchema(): Promise<void> {
     for (const net of NETWORK_KEYS) {
       for (const statement of schemaFor(tableFor(net))) await db().query(statement);
     }
+    for (const statement of bazaarSchema) await db().query(statement);
   })().catch((error) => {
     schemaReady = undefined;
     throw error;

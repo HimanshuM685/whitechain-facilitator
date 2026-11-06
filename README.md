@@ -253,8 +253,14 @@ Then open:
 | `GET /health` | Signer balance, block height, settles left. `503` when degraded. |
 | `GET /api/logs` | The payment log (paginated with `before` / `nextBefore`). |
 | `GET /api/stats` | Totals per network. |
+| `GET /discovery/resources` | The x402 Bazaar: verified endpoints, official discovery shape. Also `/discovery/search`. |
+| `POST /discovery/register` | A merchant registers its pay-to and endpoints; each is listed only if its live 402 pays that address. |
 
-`/verify`, `/settle` and `/supported` are the standard x402 v2 facilitator interface. Full request and response shapes: [content/docs/api-reference.mdx](content/docs/api-reference.mdx).
+`/verify`, `/settle`, `/supported` and `/discovery/*` are the standard x402 v2 facilitator interface (Bazaar is the official discovery extension, advertised in `/supported`). Full request and response shapes: [content/docs/api-reference.mdx](content/docs/api-reference.mdx).
+
+### The Bazaar
+
+[`/bazaar`](content/docs/bazaar.mdx) lists merchants (pay-to addresses) and their x402 endpoints, with name, site, favicon and per-endpoint docs. An endpoint enters when a payment for it settles here or when the merchant registers it, but it is shown only after we call it ourselves and its live `402` pays that same address. Re-checked every 10 payments or daily.
 
 ---
 

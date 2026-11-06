@@ -209,4 +209,55 @@ await check("log cursor splits timestamp and id, and accepts a bare timestamp", 
   assert.deepEqual(parseCursor("x_1; drop table"), { ts: "x_1; drop table", id: null });
 });
 
+// ── Bazaar ────────────────────────────────────────────────────────────────
+// We fetch URLs that strangers hand us, so the refusal rules are tested hard.
+const bazaar = await import("../lib/bazaar");
+
+await check("bazaar refuses private, loopback and metadata addresses", () => {
+  for (const ip of ["127.0.0.1", "10.1.2.3", "172.16.0.1", "192.168.1.1", "169.254.169.254", "100.64.0.1", "0.0.0.0", "::1", "fd00::1", "fe80::1", "::ffff:127.0.0.1"]) {
+    assert.equal(bazaar.isPublicIp(ip), false, `${ip} should be private`);
+  }
+  for (const ip of ["8.8.8.8", "1.1.1.1", "2606:4700:4700::1111"]) {
+    assert.equal(bazaar.isPublicIp(ip), true, `${ip} should be public`);
+  }
+});
+
+await check("bazaar only calls public https endpoints", async () => {
+  for (const url of ["http://example.com/x402", "https://localhost/x402", "https://127.0.0.1/x402", "https://user:pw@example.com/", "not a url"]) {
+    assert.ok("error" in (await bazaar.safeTarget(url)), `${url} should be refused`);
+  }
+});
+
+await check("bazaar lists an endpoint only when its 402 pays the claimed address", () => {
+  const MERCHANT_B = "0x2222222222222222222222222222222222222222";
+  const paymentRequired = {
+    x402Version: 2,
+    resource: { url: "https://acme.example/x402/top-up" },
+    accepts: [{ scheme: "exact", network: NETWORKS.testnet.caip2, asset: USDT_TESTNET.address, amount: "10000", payTo: MERCHANT, maxTimeoutSeconds: 60, extra: {} }],
+  } as unknown as Parameters<typeof bazaar.matchPayTo>[0];
+
+  assert.equal(bazaar.matchPayTo(paymentRequired, MERCHANT.toUpperCase().replace("0X", "0x")).status, "verified");
+  assert.equal(bazaar.matchPayTo(paymentRequired, MERCHANT_B).status, "mismatch");
+
+  // Right address, but on a chain we do not serve: not ours to list.
+  const base = { ...paymentRequired, accepts: [{ ...paymentRequired.accepts[0]!, network: "eip155:8453" }] };
+  assert.equal(bazaar.matchPayTo(base as typeof paymentRequired, MERCHANT).status, "mismatch");
+});
+
+await check("bazaar registration input is validated", () => {
+  assert.ok("error" in bazaar.parseRegistration({ payTo: "nope", endpoints: ["https://a.example/x"] }));
+  assert.ok("error" in bazaar.parseRegistration({ payTo: MERCHANT, endpoints: [] }));
+  assert.ok("error" in bazaar.parseRegistration({ payTo: MERCHANT, endpoints: Array(26).fill("https://a.example/x") }));
+  const ok = bazaar.parseRegistration({
+    payTo: MERCHANT,
+    name: "Acme",
+    website: "https://acme.example/about",
+    endpoints: ["https://acme.example/x402/top-up", { url: "https://acme.example/x402/report", method: "post" }],
+  });
+  assert.ok("input" in ok);
+  assert.equal(ok.input.website, "https://acme.example");
+  assert.equal(ok.input.payTo, MERCHANT.toLowerCase());
+  assert.deepEqual(ok.input.endpoints[1], { url: "https://acme.example/x402/report", method: "POST" });
+});
+
 console.log(`\n${passed} checks passed.`);

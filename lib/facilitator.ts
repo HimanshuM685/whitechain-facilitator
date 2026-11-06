@@ -21,6 +21,7 @@ import type {
   VerifyResponse,
 } from "@x402/core/types";
 import { registerExactEvmScheme } from "@x402/evm/exact/facilitator";
+import { recordSettle } from "./bazaar";
 import { facilitatorSignerFor, publicClientFor } from "./chain";
 import { logPayment } from "./db";
 import { config } from "./guards";
@@ -63,7 +64,8 @@ async function receiptCost(net: NetworkKey, txHash: string) {
 const NO_COST = { gas_used: null, gas_cost_wei: null };
 
 function build(net: NetworkKey): x402Facilitator {
-  const facilitator = new x402Facilitator();
+  // Advertise the Bazaar discovery extension in /supported; the catalog itself is lib/bazaar.ts.
+  const facilitator = new x402Facilitator().registerExtension({ key: "bazaar" });
 
   const signer = facilitatorSignerFor(net);
 
@@ -111,6 +113,8 @@ function build(net: NetworkKey): x402Facilitator {
         ...cost,
         ...describe(paymentPayload, requirements, net),
       });
+      // A real settled payment lists the paid endpoint in the Bazaar (once verified).
+      if (result.success) await recordSettle(paymentPayload, requirements);
     })
     .onSettleFailure(async ({ paymentPayload, requirements, error }) => {
       await logPayment(net, {

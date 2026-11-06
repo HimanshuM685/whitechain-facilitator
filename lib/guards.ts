@@ -50,7 +50,7 @@ const WINDOW_MS = 60_000;
 const buckets = new Map<string, Bucket>();
 
 /** Returns seconds until reset when the key is over its limit, else null. */
-function hit(key: string, limit: number): number | null {
+export function hit(key: string, limit: number): number | null {
   if (limit <= 0) return null;
   const now = Date.now();
   const existing = buckets.get(key);

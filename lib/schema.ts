@@ -42,3 +42,46 @@ export const schemaFor = (table: string): string[] => [
   `drop index if exists ${table}_settle_day_idx`,
   `drop index if exists ${table}_settle_spend_idx`,
 ];
+
+/**
+ * Bazaar catalog — network-independent, applied once.
+ *
+ * A merchant is a pay-to address. Endpoints are listed only while `status` is
+ * 'verified': we called the URL ourselves and its live 402 named that pay-to.
+ */
+export const bazaarSchema: string[] = [
+  `create table if not exists bazaar_merchants (
+    pay_to      text primary key,
+    name        text,
+    website     text,
+    created_at  timestamptz not null default now(),
+    updated_at  timestamptz not null default now()
+  )`,
+  `create table if not exists bazaar_endpoints (
+    id                   bigserial primary key,
+    resource_url         text        not null,
+    method               text        not null default 'GET',
+    pay_to               text        not null,
+    network              text,
+    origin               text        not null,
+    service_name         text,
+    description          text,
+    mime_type            text,
+    tags                 text[],
+    icon_url             text,
+    accepts              jsonb,
+    discovery            jsonb,
+    status               text        not null default 'pending'
+                         check (status in ('pending', 'verified', 'mismatch', 'unreachable')),
+    status_detail        text,
+    verified_at          timestamptz,
+    last_checked_at      timestamptz,
+    settle_count         integer     not null default 0,
+    settles_since_check  integer     not null default 0,
+    source               text        not null check (source in ('settle', 'register')),
+    created_at           timestamptz not null default now(),
+    updated_at           timestamptz not null default now()
+  )`,
+  `create unique index if not exists bazaar_endpoints_url_method_idx on bazaar_endpoints (resource_url, method)`,
+  `create index if not exists bazaar_endpoints_payto_status_idx on bazaar_endpoints (pay_to, status)`,
+];

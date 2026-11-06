@@ -42,6 +42,11 @@ export const DOCS: DocSection[] = [
         summary: "An agent that pays with USDT and no gas token.",
       },
       {
+        slug: "bazaar",
+        title: "List your API in the Bazaar",
+        summary: "Get discovered by agents: describe your endpoints, and we verify they pay you.",
+      },
+      {
         slug: "quickstart-testnet",
         title: "Testnet setup",
         summary: "Get test USDT, understand the faucet, run the whole loop.",
