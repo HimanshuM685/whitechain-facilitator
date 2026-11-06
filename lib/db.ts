@@ -184,39 +184,87 @@ export async function listPayments(query: LogQuery): Promise<PaymentRow[]> {
   )) as PaymentRow[];
 }
 
-export type NetworkStats = {
+export const STATS_RANGES = { "24h": "24 hours", "7d": "7 days", "30d": "30 days", all: null } as const;
+export type StatsRange = keyof typeof STATS_RANGES;
+
+export const isStatsRange = (value: unknown): value is StatsRange =>
+  typeof value === "string" && value in STATS_RANGES;
+
+/** Totals for one time window. */
+export type StatsWindow = {
+  /** Successful settlements. */
   settled: number;
   failed: number;
+  /** Settle transactions that reached the chain, successful or not. */
+  onchainTxs: number;
+  /** Sum of settled amounts, base units. */
   volume: string;
   gasSponsoredWei: string;
   uniquePayers: number;
   uniqueMerchants: number;
+  /** Mean /settle-to-confirmed-receipt time of successful settles, ms. */
+  avgSettleMs: number | null;
+};
+
+export type NetworkStats = {
+  range: StatsRange;
+  current: StatsWindow;
+  /** The equal-length window just before `current`; null for "all". */
+  previous: StatsWindow | null;
   lastSettledAt: string | null;
 };
 
-export async function statsFor(net: NetworkKey): Promise<NetworkStats> {
+const windowColumns = (prefix: string, where: string) => `
+  count(*) filter (where ok and ${where})::int                                     as ${prefix}_settled,
+  count(*) filter (where not ok and ${where})::int                                 as ${prefix}_failed,
+  count(*) filter (where tx_hash is not null and ${where})::int                    as ${prefix}_onchain,
+  coalesce(sum(amount) filter (where ok and ${where}), 0)::text                    as ${prefix}_volume,
+  coalesce(sum(gas_cost_wei) filter (where ${where}), 0)::text                     as ${prefix}_gas,
+  count(distinct payer) filter (where ok and ${where})::int                        as ${prefix}_payers,
+  count(distinct pay_to) filter (where ok and ${where})::int                       as ${prefix}_merchants,
+  round(avg(latency_ms) filter (where ok and latency_ms is not null and ${where}))::int as ${prefix}_avg_ms`;
+
+function readWindow(r: Record<string, unknown>, prefix: string): StatsWindow {
+  const avg = r[`${prefix}_avg_ms`];
+  return {
+    settled: Number(r[`${prefix}_settled`] ?? 0),
+    failed: Number(r[`${prefix}_failed`] ?? 0),
+    onchainTxs: Number(r[`${prefix}_onchain`] ?? 0),
+    volume: String(r[`${prefix}_volume`] ?? "0"),
+    gasSponsoredWei: String(r[`${prefix}_gas`] ?? "0"),
+    uniquePayers: Number(r[`${prefix}_payers`] ?? 0),
+    uniqueMerchants: Number(r[`${prefix}_merchants`] ?? 0),
+    avgSettleMs: avg == null ? null : Number(avg),
+  };
+}
+
+/**
+ * Settlement stats for one network over a time window, plus the window before
+ * it for change indicators. One scan: both windows are filtered aggregates.
+ * The interval comes from the STATS_RANGES whitelist, never from request text.
+ */
+export async function statsFor(net: NetworkKey, range: StatsRange = "all"): Promise<NetworkStats> {
   await ensureSchema();
   const table = tableFor(net);
+  const interval = STATS_RANGES[range];
+
+  const current = interval ? `created_at >= now() - $1::interval` : "true";
+  const previous = `created_at >= now() - 2 * $1::interval and created_at < now() - $1::interval`;
+
   const rows = (await db().query(
-    `select
-       count(*) filter (where kind = 'settle' and ok)::int        as settled,
-       count(*) filter (where kind = 'settle' and not ok)::int    as failed,
-       coalesce(sum(amount) filter (where kind = 'settle' and ok), 0)::text       as volume,
-       coalesce(sum(gas_cost_wei) filter (where kind = 'settle'), 0)::text        as gas_sponsored_wei,
-       count(distinct payer) filter (where kind = 'settle' and ok)::int  as unique_payers,
-       count(distinct pay_to) filter (where kind = 'settle' and ok)::int as unique_merchants,
-       max(created_at) filter (where kind = 'settle' and ok)             as last_settled_at
-     from ${table}`,
+    `select ${windowColumns("cur", current)},
+            ${interval ? `${windowColumns("prev", previous)},` : ""}
+            max(created_at) filter (where ok) as last_settled_at
+       from ${table}
+      where kind = 'settle'`,
+    interval ? [interval] : [],
   )) as Record<string, unknown>[];
 
   const r = rows[0] ?? {};
   return {
-    settled: Number(r.settled ?? 0),
-    failed: Number(r.failed ?? 0),
-    volume: String(r.volume ?? "0"),
-    gasSponsoredWei: String(r.gas_sponsored_wei ?? "0"),
-    uniquePayers: Number(r.unique_payers ?? 0),
-    uniqueMerchants: Number(r.unique_merchants ?? 0),
+    range,
+    current: readWindow(r, "cur"),
+    previous: interval ? readWindow(r, "prev") : null,
     lastSettledAt: (r.last_settled_at as string | null) ?? null,
   };
 }

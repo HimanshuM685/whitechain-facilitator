@@ -98,6 +98,8 @@ function build(net: NetworkKey): x402Facilitator {
       started.set(ctx.paymentPayload, Date.now());
     })
     .onAfterSettle(async ({ paymentPayload, requirements, result }) => {
+      // Measured before the receipt lookup below, so it is the settle itself.
+      const latency = elapsed(paymentPayload);
       const cost = result.transaction ? await receiptCost(net, result.transaction) : NO_COST;
       await logPayment(net, {
         kind: "settle",
@@ -105,7 +107,7 @@ function build(net: NetworkKey): x402Facilitator {
         error_reason: result.errorReason ?? null,
         payer: result.payer ?? null,
         tx_hash: result.transaction || null,
-        latency_ms: elapsed(paymentPayload),
+        latency_ms: latency,
         ...cost,
         ...describe(paymentPayload, requirements, net),
       });

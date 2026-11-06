@@ -177,7 +177,33 @@ Powers the [transaction log](/logs). `network` selects the table; the two never 
 
 ## GET /api/stats
 
-Totals per network, as shown on the front page.
+Settlement totals per network, as shown on the front page. Computed live from the settlement log.
+
+| Parameter | Default | |
+| --- | --- | --- |
+| `range` | `all` | `24h`, `7d`, `30d` or `all` |
+
+Each network carries `current` (the window) and `previous` (the equal-length window before it, `null` for `all`):
+
+```json
+{
+  "network": "testnet",
+  "current": {
+    "settled": 412,
+    "failed": 3,
+    "onchainTxs": 414,
+    "volume": "4.12",
+    "gasSponsoredWbt": "0.1738",
+    "uniquePayers": 37,
+    "uniqueMerchants": 5,
+    "avgSettleMs": 1840
+  },
+  "previous": { "...": "same shape" },
+  "lastSettledAt": "2026-11-06T09:12:44.120Z"
+}
+```
+
+`onchainTxs` counts every settle transaction that reached the chain, including reverted ones; `settled` counts only successful ones. `avgSettleMs` is the time from our receiving `/settle` to the confirmed receipt (simulation, broadcast and confirmation), averaged over successful settles. `volume` is in whole USDT.
 
 ## Error codes
 
